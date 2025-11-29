@@ -1,0 +1,56 @@
+services:
+  # Self-contained addon service with integrated scrapers
+  - type: web
+    name: hentaistream-addon
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    
+    envVars:
+      - key: NODE_ENV
+        value: production
+      
+      - key: PORT
+        value: 10000
+      
+      - key: CACHE_TTL_CATALOG
+        value: 3600
+      
+      - key: CACHE_TTL_META
+        value: 7200
+      
+      - key: CACHE_TTL_STREAM
+        value: 300
+      
+      - key: CACHE_TTL_SEARCH
+        value: 900
+      
+      - key: CACHE_MAX_ITEMS
+        value: 1000
+      
+      - key: USER_AGENT
+        value: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
+      
+      - key: REQUEST_TIMEOUT
+        value: 10000
+      
+      - key: MAX_RETRIES
+        value: 3
+      
+      - key: LOG_LEVEL
+        value: info
+      
+      - key: ADDON_NAME
+        value: HentaiStream
+      
+      - key: ADDON_ID
+        value: com.hentaistream.addon
+      
+      - key: ADDON_VERSION
+        value: 0.1.0
+      
+      - key: ADDON_DESCRIPTION
+        value: Adult anime streaming addon. 18+ only.

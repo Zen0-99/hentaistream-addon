@@ -1,0 +1,60 @@
+2025-11-29 03:12:07 [info]: LRU cache initialized
+2025-11-29 03:12:07 [info]: Cache manager initialized with LRU cache
+2025-11-29 03:12:07 [info]: Fetching HentaiMama genres
+2025-11-29 03:12:07 [info]: Addon handlers initialized
+2025-11-29 03:12:07 [info]: ========================================
+2025-11-29 03:12:07 [info]: 🚀 HentaiStream v0.1.0
+2025-11-29 03:12:07 [info]: ========================================
+2025-11-29 03:12:07 [info]: Server running on port 7000
+2025-11-29 03:12:07 [info]: Environment: development
+2025-11-29 03:12:07 [info]: Manifest URL: http://localhost:7000/manifest.json
+2025-11-29 03:12:07 [info]: Health Check: http://localhost:7000/health
+2025-11-29 03:12:07 [info]: Install URL: stremio://localhost:7000/manifest.json
+2025-11-29 03:12:07 [info]: ========================================
+2025-11-29 03:12:07 [info]: Found 101 genres
+2025-11-29 03:12:07 [info]: Manifest updated with 6 catalogs
+2025-11-29 03:12:31 [info]: Catalog request: hentaimama-all {"type":"series","extra":{}}
+2025-11-29 03:12:31 [info]: Request: skip=0, need 20 items
+2025-11-29 03:12:31 [info]: Have 0 series, need 20, fetching page 1
+2025-11-29 03:12:31 [info]: Fetching HentaiMama catalog page 1 (sort: popular)
+2025-11-29 03:12:31 [info]: → Fetching URL: https://hentaimama.io/hentai-series/?filter=rating
+2025-11-29 03:12:31 [info]: Found 30 elements with selector: article
+2025-11-29 03:12:33 [info]: Found 30 series (30 with full metadata)
+2025-11-29 03:12:33 [info]: Page 1 returned 30 items → 30 NEW unique series (0 duplicates skipped)
+2025-11-29 03:12:33 [info]: Returning 20 series (have 30 total cached, complete: false)
+2025-11-29 03:12:35 [info]: Catalog request: hentaimama-all {"type":"series","extra":{"skip":"20"}}
+2025-11-29 03:12:35 [info]: Request: skip=20, need 20 items
+2025-11-29 03:12:35 [info]: Have 30 series, need 40, fetching page 2
+2025-11-29 03:12:35 [info]: Fetching HentaiMama catalog page 2 (sort: popular)
+2025-11-29 03:12:35 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/2/?filter=rating
+2025-11-29 03:12:35 [info]: Found 30 elements with selector: article
+2025-11-29 03:12:36 [info]: Found 30 series (30 with full metadata)
+2025-11-29 03:12:36 [info]: Page 2 returned 30 items → 28 NEW unique series (2 duplicates skipped)
+2025-11-29 03:12:36 [info]: Returning 20 series (have 58 total cached, complete: false)
+2025-11-29 03:12:37 [info]: Catalog request: hentaimama-all {"type":"series","extra":{"skip":"40"}}
+2025-11-29 03:12:37 [info]: Request: skip=40, need 20 items
+2025-11-29 03:12:37 [info]: Have 58 series, need 60, fetching page 3
+2025-11-29 03:12:37 [info]: Fetching HentaiMama catalog page 3 (sort: popular)
+2025-11-29 03:12:37 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/3/?filter=rating
+2025-11-29 03:12:37 [info]: Found 30 elements with selector: article
+2025-11-29 03:12:38 [info]: Found 30 series (30 with full metadata)
+2025-11-29 03:12:38 [info]: Page 3 returned 30 items → 23 NEW unique series (7 duplicates skipped)
+2025-11-29 03:12:38 [info]: Returning 20 series (have 81 total cached, complete: false)
+2025-11-29 03:12:40 [info]: Catalog request: hentaimama-all {"type":"series","extra":{"skip":"60"}}
+2025-11-29 03:12:40 [info]: Request: skip=60, need 20 items
+2025-11-29 03:12:40 [info]: Returning 20 series (have 81 total cached, complete: false)
+2025-11-29 03:12:41 [info]: Catalog request: hentaimama-all {"type":"series","extra":{"skip":"80"}}
+2025-11-29 03:12:41 [info]: Request: skip=80, need 20 items
+2025-11-29 03:12:41 [info]: Have 81 series, need 100, fetching page 4
+2025-11-29 03:12:41 [info]: Fetching HentaiMama catalog page 4 (sort: popular)
+2025-11-29 03:12:41 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/4/?filter=rating
+2025-11-29 03:12:41 [info]: Found 30 elements with selector: article
+2025-11-29 03:12:42 [info]: Found 30 series (30 with full metadata)
+2025-11-29 03:12:42 [info]: Page 4 returned 30 items → 17 NEW unique series (13 duplicates skipped)
+2025-11-29 03:12:42 [info]: Have 98 series, need 100, fetching page 5
+2025-11-29 03:12:42 [info]: Fetching HentaiMama catalog page 5 (sort: popular)
+2025-11-29 03:12:42 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/5/?filter=rating
+2025-11-29 03:12:42 [info]: Found 30 elements with selector: article
+2025-11-29 03:12:43 [info]: Found 30 series (30 with full metadata)
+2025-11-29 03:12:43 [info]: Page 5 returned 30 items → 24 NEW unique series (6 duplicates skipped)
+2025-11-29 03:12:43 [info]: Returning 20 series (have 122 total cached, complete: false)
