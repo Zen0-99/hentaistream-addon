@@ -35,6 +35,11 @@ async function catalogHandler(args) {
     return { metas: [] };
   }
 
+  // Handle search queries
+  if (extra.search) {
+    return handleSearch(id, extra.search);
+  }
+
   // Extract genre from catalog ID (e.g., 'hentaimama-genre-uncensored')
   const catalogGenreMatch = id.match(/^hentaimama-genre-(.+)$/);
   const catalogGenre = catalogGenreMatch ? catalogGenreMatch[1] : null;
@@ -113,6 +118,28 @@ async function catalogHandler(args) {
   logger.info(`📤 Returning ${result.length} items (total cached: ${catalogData.series.length})`);
   
   return { metas: result };
+}
+
+/**
+ * Handle search queries
+ * Supports: tag search, keyword search, title search
+ */
+async function handleSearch(catalogId, query) {
+  logger.info(`Search request: "${query}" in catalog ${catalogId}`);
+  
+  const scraper = getScraper(catalogId);
+  const ttl = 900; // 15-minute cache for search results
+  
+  // Cache key for search results
+  const searchCacheKey = cache.key('search', `${catalogId}:${query.toLowerCase()}`);
+  
+  const results = await cache.wrap(searchCacheKey, ttl, async () => {
+    return await scraper.search(query);
+  });
+  
+  logger.info(`Search "${query}" returned ${results.length} results`);
+  
+  return { metas: results };
 }
 
 module.exports = catalogHandler;

@@ -31,6 +31,10 @@ function getBaseManifest() {
         name: 'HentaiMama',
         extra: [
           {
+            name: 'search',
+            isRequired: false,
+          },
+          {
             name: 'skip',
             isRequired: false,
           },

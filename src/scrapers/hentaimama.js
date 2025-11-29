@@ -1,6 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const logger = require('../utils/logger');
+const malClient = require('../utils/mal');
 
 class HentaiMamaScraper {
   constructor() {
@@ -8,6 +9,7 @@ class HentaiMamaScraper {
     this.searchUrl = `${this.baseUrl}/episodes`;
     this.genresCache = null;
     this.genresCacheTime = null;
+    this.enableMAL = true; // Feature flag for MAL integration
   }
 
   /**
@@ -62,6 +64,124 @@ class HentaiMamaScraper {
    */
   async getCatalogByGenre(genre, page = 1) {
     return this.getCatalog(page, genre);
+  }
+
+  /**
+   * Hybrid search: tag-based, keyword, and title search
+   * @param {string} query - Search query
+   * @returns {Array} - Array of series matching the query
+   */
+  async search(query) {
+    try {
+      const normalizedQuery = query.toLowerCase().trim();
+      logger.info(`Searching HentaiMama for: "${query}"`);
+
+      // Strategy 1: Tag/Genre search
+      // Check if query matches any genre (case-insensitive)
+      const genres = await this.getGenres();
+      const matchingGenre = genres.find(g => 
+        g.name.toLowerCase() === normalizedQuery ||
+        g.slug.toLowerCase() === normalizedQuery
+      );
+
+      if (matchingGenre) {
+        logger.info(`Tag search: "${query}" matched genre "${matchingGenre.name}"`);
+        // Return genre catalog (1 page = 20 items)
+        return await this.getCatalogByGenre(matchingGenre.slug, 1);
+      }
+
+      // Strategy 2: Keyword search for "Hentai" or "Anime Porn"
+      // Only match if query is EXACTLY one of these keywords (not just contains)
+      const exactKeywords = ['hentai', 'anime porn', 'anime', 'ecchi', 'porn'];
+      if (exactKeywords.includes(normalizedQuery)) {
+        logger.info(`Keyword search: "${query}" matched keyword, returning main catalog`);
+        // Return main catalog (1 page = 20 items, sorted by popular)
+        const catalog = await this.getCatalog(1, null, 'popular');
+        return catalog.slice(0, 20); // Limit to exactly 20 results
+      }
+
+      // Strategy 3: Title search
+      // Fetch multiple pages to ensure we find matches
+      logger.info(`Title search: filtering catalog for "${query}"`);
+      
+      // Fetch first 3 pages (60 series total) for better search coverage
+      const catalogPromises = [
+        this.getCatalog(1, null, 'popular'),
+        this.getCatalog(2, null, 'popular'),
+        this.getCatalog(3, null, 'popular')
+      ];
+      
+      const catalogPages = await Promise.all(catalogPromises);
+      const allSeries = catalogPages.flat();
+      
+      // Deduplicate by ID
+      const uniqueSeries = Array.from(
+        new Map(allSeries.map(s => [s.id, s])).values()
+      );
+      
+      logger.info(`Searching across ${uniqueSeries.length} series`);
+      
+      // Log first few series names for debugging
+      logger.info(`Sample series names: ${uniqueSeries.slice(0, 5).map(s => s.name).join(', ')}`);
+      
+      // Split query into words for flexible matching (minimum 2 chars)
+      const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
+      logger.info(`Search query: "${normalizedQuery}", words: [${queryWords.join(', ')}]`);
+      
+      const results = uniqueSeries.filter(series => {
+        const seriesName = series.name.toLowerCase();
+        const seriesId = series.id.toLowerCase();
+        
+        // Also check genres (series.genres is an array)
+        const seriesGenres = (series.genres || []).map(g => g.toLowerCase()).join(' ');
+        
+        // Check English title (ghost field for search)
+        const englishTitle = (series.englishTitle || '').toLowerCase();
+        
+        // Log each series being checked (only first 3 for debugging)
+        if (uniqueSeries.indexOf(series) < 3) {
+          logger.info(`Checking series: "${series.name}" (id: ${series.id})`);
+          logger.info(`  - englishTitle: "${series.englishTitle || 'none'}"`);
+          logger.info(`  - genres: [${series.genres ? series.genres.join(', ') : 'none'}]`);
+          logger.info(`  - seriesName.includes("${normalizedQuery}"): ${seriesName.includes(normalizedQuery)}`);
+          logger.info(`  - englishTitle.includes("${normalizedQuery}"): ${englishTitle.includes(normalizedQuery)}`);
+          logger.info(`  - seriesId.includes("${normalizedQuery}"): ${seriesId.includes(normalizedQuery)}`);
+          logger.info(`  - seriesGenres.includes("${normalizedQuery}"): ${seriesGenres.includes(normalizedQuery)}`);
+        }
+        
+        // Match if ANY query word is in series name, English title, ID, OR GENRES
+        // OR if the full query is in any of those fields
+        const matches = seriesName.includes(normalizedQuery) || 
+               englishTitle.includes(normalizedQuery) ||
+               seriesId.includes(normalizedQuery) ||
+               seriesGenres.includes(normalizedQuery) ||
+               queryWords.some(word => 
+                 seriesName.includes(word) || 
+                 englishTitle.includes(word) ||
+                 seriesId.includes(word) || 
+                 seriesGenres.includes(word)
+               );
+        
+        if (matches) {
+          logger.info(`✓ MATCH: "${series.name}" (matched in: ${
+            seriesName.includes(normalizedQuery) || queryWords.some(w => seriesName.includes(w)) ? 'name ' : ''
+          }${englishTitle.includes(normalizedQuery) || queryWords.some(w => englishTitle.includes(w)) ? 'englishTitle ' : ''
+          }${seriesId.includes(normalizedQuery) || queryWords.some(w => seriesId.includes(w)) ? 'id ' : ''
+          }${seriesGenres.includes(normalizedQuery) || queryWords.some(w => seriesGenres.includes(w)) ? 'genres' : ''})`);
+        }
+        
+        return matches;
+      });
+
+      logger.info(`Title search found ${results.length} matches for "${query}"`);
+      
+      // Return max 20 results (1 page worth)
+      return results.slice(0, 20);
+
+    } catch (error) {
+      logger.error(`Error searching HentaiMama for "${query}":`, error.message);
+      return [];
+    }
   }
 
   /**
@@ -399,6 +519,28 @@ class HentaiMamaScraper {
       });
 
       logger.info(`Found ${enrichedSeries.length} series (${enrichedCount} with full metadata)`);
+      
+      // Enrich with MAL data if enabled
+      if (this.enableMAL && enrichedSeries.length > 0) {
+        logger.info(`Enriching ${enrichedSeries.length} series with MAL data...`);
+        
+        // Enrich in batches of 3 to respect rate limits (3 req/sec)
+        const batchSize = 3;
+        const malEnrichedSeries = [];
+        
+        for (let i = 0; i < enrichedSeries.length; i += batchSize) {
+          const batch = enrichedSeries.slice(i, i + batchSize);
+          const batchPromises = batch.map(series => malClient.enrichSeries(series));
+          const batchResults = await Promise.all(batchPromises);
+          malEnrichedSeries.push(...batchResults);
+        }
+        
+        const malMatchCount = malEnrichedSeries.filter(s => s.malId).length;
+        logger.info(`MAL enrichment complete: ${malMatchCount}/${enrichedSeries.length} series matched`);
+        
+        return malEnrichedSeries;
+      }
+      
       return enrichedSeries;
 
     } catch (error) {
