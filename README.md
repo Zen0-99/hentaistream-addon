@@ -25,7 +25,7 @@ The addon pulls content from multiple sources and combines them into one easy-to
 - **Latest Updates** - Recently added series
 - **Trending** - Popular right now
 - **Popular** - Most watched overall
-- **Random** - Discover something new
+- **All** - A list of All Hentai
 
 ###  Smart Filtering
 - **101+ Genres** - 3D, Action, Adventure, Comedy, Drama, Fantasy, Horror, Romance, Sci-Fi, and many more
@@ -33,10 +33,10 @@ The addon pulls content from multiple sources and combines them into one easy-to
 - **Release Years** - Browse content from specific years (2000-2025)
 
 ###  Quality Features
-- Multiple quality options per episode
-- Automatic episode organization
-- Rich metadata with descriptions and cover art
+- Multiple options per episode
+- Rich metadata with descriptions, genres and animation studios
 - Smart caching for fast loading
+- Blacklisting capabilities in the configure screen
 
 ---
 
