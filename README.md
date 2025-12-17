@@ -1,6 +1,6 @@
 ﻿# HentaiStream Addon for Stremio
 
-** 18+ Adult Content Only **
+18+ Adult Content Only
 
 A free Stremio addon that brings adult anime content directly to your Stremio app. Browse, search, and stream from multiple sources with a clean interface.
 
