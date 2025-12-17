@@ -3,6 +3,28 @@ const cheerio = require('cheerio');
 const logger = require('../utils/logger');
 const { parseDate, extractYear, getMostRecentDate } = require('../utils/dateParser');
 
+// got-scraping for better TLS fingerprinting (bypasses Cloudflare)
+// It's ESM-only, so we use dynamic import
+let gotScrapingModule = null;
+let gotScrapingLoaded = false;
+
+async function loadGotScraping() {
+  if (gotScrapingLoaded) return gotScrapingModule;
+  
+  try {
+    // Dynamic import for ESM module
+    const module = await import('got-scraping');
+    gotScrapingModule = module.gotScraping;
+    gotScrapingLoaded = true;
+    logger.info('[HentaiMama] got-scraping loaded successfully for Cloudflare bypass');
+    return gotScrapingModule;
+  } catch (e) {
+    gotScrapingLoaded = true; // Mark as loaded (failed) to not retry
+    logger.warn('[HentaiMama] got-scraping not available, falling back to axios:', e.message);
+    return null;
+  }
+}
+
 // Multiple User-Agents to rotate through (some sites block specific ones)
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -47,16 +69,39 @@ class HentaiMamaScraper {
   }
 
   /**
-   * Make a resilient HTTP request with retry logic and User-Agent rotation
+   * Make a resilient HTTP request with retry logic and TLS fingerprint rotation
+   * Uses got-scraping for better Cloudflare bypass, falls back to axios
    * @param {string} url - URL to fetch
-   * @param {object} options - Additional axios options
-   * @returns {Promise<object>} Axios response
+   * @param {object} options - Additional options
+   * @returns {Promise<object>} Response with { data, status }
    */
   async makeRequest(url, options = {}) {
     let lastError;
     
+    // Try to load got-scraping (ESM module, loaded dynamically)
+    const gotScraping = await loadGotScraping();
+    
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
+        // Try got-scraping first (better TLS fingerprinting for Cloudflare bypass)
+        if (gotScraping) {
+          const response = await gotScraping({
+            url,
+            headerGeneratorOptions: {
+              browsers: ['chrome', 'firefox', 'safari'],
+              devices: ['desktop'],
+              locales: ['en-US'],
+              operatingSystems: ['windows', 'macos', 'linux'],
+            },
+            timeout: { request: 15000 },
+            retry: { limit: 0 }, // We handle retries ourselves
+            ...options
+          });
+          
+          return { data: response.body, status: response.statusCode };
+        }
+        
+        // Fallback to axios if got-scraping not available
         const headers = buildHeaders();
         const response = await axios.get(url, {
           headers,
@@ -66,12 +111,12 @@ class HentaiMamaScraper {
         return response;
       } catch (error) {
         lastError = error;
-        const status = error.response?.status || 'network error';
+        const status = error.response?.statusCode || error.response?.status || error.code || 'network error';
         
-        if (status === 403 && attempt < this.maxRetries) {
-          // 403 might be User-Agent based, try with different one
-          logger.warn(`[HentaiMama] Attempt ${attempt} failed (${status}), retrying with different User-Agent...`);
-          await new Promise(resolve => setTimeout(resolve, 500 * attempt)); // Backoff
+        if ((status === 403 || status === 'ERR_NON_2XX_3XX_RESPONSE') && attempt < this.maxRetries) {
+          // 403 or non-2xx - try again with different fingerprint
+          logger.warn(`[HentaiMama] Attempt ${attempt} failed (${status}), retrying with different browser fingerprint...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Backoff
           continue;
         }
         
