@@ -197,6 +197,10 @@ async function batchFetch(urls, options = {}) {
     })));
   }
   
+  // Use axios for CF Worker requests - it auto-decompresses gzip responses
+  // (undici's pool.request() does NOT auto-decompress, causing JSON.parse to fail on gzip binary)
+  const axios = require('axios');
+  
   const BATCH_SIZE = 15; // URLs per batch request (CF Worker handles up to 20)
   const results = [];
   
@@ -217,12 +221,18 @@ async function batchFetch(urls, options = {}) {
       
       logger.info(`[HttpClient] Batch fetching ${batch.length} URLs via CF Worker`);
       
-      const response = await fetch(proxyUrl.toString(), {
+      // Use axios instead of undici - axios auto-decompresses gzip/deflate/br
+      const response = await axios.get(proxyUrl.toString(), {
         timeout: options.timeout || 45000, // Longer timeout for batch
+        headers: buildHeaders(),
+        decompress: true, // Explicitly enable (default is true, but be explicit)
       });
       
-      // Parse JSON response from batch endpoint
-      const batchResults = JSON.parse(response.data);
+      // axios already parses JSON if Content-Type is application/json
+      // but CF Worker may return text/plain, so handle both cases
+      const batchResults = typeof response.data === 'string' 
+        ? JSON.parse(response.data) 
+        : response.data;
       
       if (Array.isArray(batchResults)) {
         results.push(...batchResults);
