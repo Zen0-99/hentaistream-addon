@@ -4,6 +4,11 @@
  * This worker acts as a proxy to bypass Cloudflare protection.
  * Deploy this to Cloudflare Workers (free tier: 100K requests/day)
  * 
+ * Features:
+ * - Single URL mode: ?url=<encoded_url>
+ * - BATCH mode: ?urls=<encoded_url1>,<encoded_url2>,... (up to 20 URLs)
+ * - POST support: ?method=POST&body=<encoded_body>
+ * 
  * Setup:
  * 1. Go to https://dash.cloudflare.com/
  * 2. Create account (free)
@@ -12,6 +17,61 @@
  * 5. Copy the worker URL (e.g., https://your-worker.your-subdomain.workers.dev)
  * 6. Set CF_PROXY_URL environment variable in Render to this URL
  */
+
+// Build headers that mimic a real browser
+function buildBrowserHeaders() {
+  return {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+  };
+}
+
+// Fetch a single URL
+async function fetchSingleUrl(targetUrl, method = 'GET', body = null) {
+  try {
+    const headers = new Headers(buildBrowserHeaders());
+    
+    if (method === 'POST') {
+      headers.set('Content-Type', 'application/x-www-form-urlencoded');
+    }
+    
+    const response = await fetch(targetUrl, {
+      method,
+      headers,
+      body,
+      redirect: 'follow',
+    });
+    
+    const responseBody = await response.text();
+    
+    return {
+      url: targetUrl,
+      status: response.status,
+      contentType: response.headers.get('Content-Type') || 'text/html',
+      body: responseBody,
+      success: response.status >= 200 && response.status < 400
+    };
+  } catch (error) {
+    return {
+      url: targetUrl,
+      status: 0,
+      error: error.message,
+      success: false
+    };
+  }
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -28,72 +88,86 @@ export default {
 
     const url = new URL(request.url);
     const targetUrl = url.searchParams.get('url');
-    const methodOverride = url.searchParams.get('method'); // Support method override via URL param
-    const bodyParam = url.searchParams.get('body'); // Support body via URL param for GET-based proxy
+    const batchUrls = url.searchParams.get('urls'); // NEW: Batch mode
+    const methodOverride = url.searchParams.get('method');
+    const bodyParam = url.searchParams.get('body');
 
+    // ===== BATCH MODE =====
+    // Accept comma-separated URLs, fetch all in parallel, return JSON array
+    if (batchUrls) {
+      try {
+        // Split and decode URLs (limit to 20 to prevent abuse)
+        const urlList = batchUrls.split(',')
+          .map(u => decodeURIComponent(u.trim()))
+          .filter(u => u.startsWith('http'))
+          .slice(0, 20);
+        
+        if (urlList.length === 0) {
+          return new Response(JSON.stringify({ error: 'No valid URLs provided' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        
+        // Fetch all URLs in parallel
+        const results = await Promise.all(
+          urlList.map(targetUrl => fetchSingleUrl(targetUrl, methodOverride || 'GET', bodyParam ? decodeURIComponent(bodyParam) : null))
+        );
+        
+        return new Response(JSON.stringify(results), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'X-Batch-Count': results.length.toString(),
+            'X-Batch-Success': results.filter(r => r.success).length.toString(),
+          },
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+    }
+
+    // ===== SINGLE URL MODE =====
     if (!targetUrl) {
-      return new Response(JSON.stringify({ error: 'Missing url parameter' }), {
+      return new Response(JSON.stringify({ 
+        error: 'Missing url or urls parameter',
+        usage: {
+          single: '?url=<encoded_url>',
+          batch: '?urls=<url1>,<url2>,... (max 20)',
+          post: '?url=<url>&method=POST&body=<encoded_body>'
+        }
+      }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
     }
 
     try {
-      // Decode the URL
       const decodedUrl = decodeURIComponent(targetUrl);
-      
-      // Determine the actual method to use
       const actualMethod = methodOverride || request.method;
       
-      // Build headers that mimic a real browser
-      const headers = new Headers({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-      });
-
-      // For POST requests, get body from URL param or request body
       let body = null;
       if (actualMethod === 'POST') {
         if (bodyParam) {
-          // Body passed as URL parameter (for GET-based proxy calls)
           body = decodeURIComponent(bodyParam);
         } else if (request.method === 'POST') {
-          // Body from actual POST request
           body = await request.text();
         }
-        headers.set('Content-Type', 'application/x-www-form-urlencoded');
       }
 
-      // Fetch the target URL
-      const response = await fetch(decodedUrl, {
-        method: actualMethod,
-        headers,
-        body,
-        redirect: 'follow',
-      });
+      const result = await fetchSingleUrl(decodedUrl, actualMethod, body);
 
-      // Get the response body
-      const responseBody = await response.text();
-
-      // Return the response with CORS headers
-      return new Response(responseBody, {
-        status: response.status,
+      // For single URL mode, return the body directly (backwards compatible)
+      return new Response(result.body || JSON.stringify({ error: result.error }), {
+        status: result.status || 500,
         headers: {
-          'Content-Type': response.headers.get('Content-Type') || 'text/html',
+          'Content-Type': result.contentType || 'text/html',
           'Access-Control-Allow-Origin': '*',
-          'X-Proxied-Status': response.status.toString(),
+          'X-Proxied-Status': (result.status || 0).toString(),
         },
       });
     } catch (error) {

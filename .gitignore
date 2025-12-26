@@ -44,3 +44,6 @@ build/
 # Temporary files
 tmp/
 temp/
+
+# Cache - slug registry updates live on server
+.cache/slug-registry.json

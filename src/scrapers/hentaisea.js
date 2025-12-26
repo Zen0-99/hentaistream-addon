@@ -7,6 +7,7 @@ const cheerio = require('cheerio');
 const BaseScraper = require('./base');
 const logger = require('../utils/logger');
 const { parseDate, extractYear } = require('../utils/dateParser');
+const httpClient = require('../utils/httpClient');
 
 class HentaiSeaScraper extends BaseScraper {
   constructor() {
@@ -236,24 +237,40 @@ class HentaiSeaScraper extends BaseScraper {
         }
       });
       
-      // Fetch metadata from individual series pages in batches
-      // Only fetch for top items to keep response time reasonable
-      // Rest will load metadata when user clicks on them
-      const maxMetadataFetch = 15; // Only fetch metadata for top 15 items
-      const batchSize = 10; // Increased batch size for faster parallel fetching
+      // ===== OPTIMIZED BATCH METADATA FETCHING =====
+      // Use axios (this.client) with Promise.allSettled for parallel fetching
+      // Axios follows redirects properly unlike undici, which is required for HentaiSea
+      const maxMetadataFetch = 20;
       const itemsToFetch = items.slice(0, maxMetadataFetch);
       
       if (itemsToFetch.length > 0) {
-        logger.info(`[HentaiSea] Fetching metadata for top ${itemsToFetch.length} trending items...`);
-      }
-      
-      for (let i = 0; i < itemsToFetch.length; i += batchSize) {
-        const batch = itemsToFetch.slice(i, i + batchSize);
-        await Promise.all(batch.map(async (item) => {
+        logger.info(`[HentaiSea] Batch fetching metadata for ${itemsToFetch.length} trending items...`);
+        const startTime = Date.now();
+        
+        // Parallel fetch all series pages using axios (follows redirects)
+        const fetchPromises = itemsToFetch.map(item => 
+          this.client.get(`${this.baseUrl}/watch/${item.slug}/`).catch(err => ({ error: err.message }))
+        );
+        const batchResults = await Promise.allSettled(fetchPromises);
+        
+        logger.info(`[HentaiSea] Batch fetch completed in ${Date.now() - startTime}ms`);
+        
+        // Process results
+        let enrichedCount = 0;
+        for (let i = 0; i < itemsToFetch.length; i++) {
+          const item = itemsToFetch[i];
+          const result = batchResults[i];
+          
+          // Check for successful response
+          const response = result.status === 'fulfilled' ? result.value : null;
+          if (!response || response.error || !response.data) {
+            logger.debug(`[HentaiSea] Skip ${item.name}: status=${result.status}, error=${response?.error || 'no data'}`);
+            delete item.slug;
+            continue;
+          }
+          
           try {
-            const metaUrl = `${this.baseUrl}/watch/${item.slug}/`;
-            const metaResponse = await this.client.get(metaUrl, { timeout: 5000 }); // Reduced timeout
-            const $meta = cheerio.load(metaResponse.data);
+            const $meta = cheerio.load(response.data);
             
             // Get genres from series page using rel="tag" links (same as getMetadata)
             if (!item.genres || item.genres.length === 0) {
@@ -297,17 +314,26 @@ class HentaiSeaScraper extends BaseScraper {
               }
             });
             
-            // Clean up temporary slug property
-            delete item.slug;
-            
+            enrichedCount++;
           } catch (metaErr) {
-            logger.debug(`[HentaiSea] Metadata fetch error for ${item.name}: ${metaErr.message}`);
-            delete item.slug;
+            logger.debug(`[HentaiSea] Metadata parse error for ${item.name}: ${metaErr.message}`);
           }
-        }));
+          
+          // Clean up temporary slug property
+          delete item.slug;
+        }
+        
+        logger.info(`[HentaiSea] Enriched ${enrichedCount}/${itemsToFetch.length} items with metadata`);
+        
+        // Debug: Show sample of enriched data
+        const withGenres = items.filter(i => i.genres && i.genres.length > 0);
+        logger.info(`[HentaiSea] Items with genres: ${withGenres.length}/${items.length}`);
+        if (withGenres.length > 0) {
+          logger.debug(`[HentaiSea] Sample: ${withGenres[0].name} - genres: ${withGenres[0].genres.join(', ')}`);
+        }
       }
       
-      logger.info(`[HentaiSea] Trending complete: ${items.length} items with metadata (page ${page})`);
+      logger.info(`[HentaiSea] Trending complete: ${items.length} items (page ${page})`);
       return items;
       
     } catch (error) {

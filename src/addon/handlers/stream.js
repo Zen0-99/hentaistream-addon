@@ -186,11 +186,33 @@ async function streamHandler(args) {
         return [];
       }
       
+      /**
+       * Try HentaiTV directly - it has its own smart slug resolution via registry + WordPress API
+       * No need to try multiple variations, just pass the base info and let it figure out the real slug
+       */
+      async function tryHentaiTV(baseSlug, epNum) {
+        try {
+          // Pass a standard slug format - HentaiTV's getStreams will find the real slug internally
+          const standardSlug = `${baseSlug}-episode-${epNum}`;
+          const streams = await hentaitvScraper.getStreams(standardSlug);
+          if (streams && streams.length > 0) {
+            logger.info(`[HentaiTV] Found ${streams.length} streams`);
+            return streams.map(s => ({ ...s, provider: 'HentaiTV' }));
+          }
+        } catch (err) {
+          if (!err.message?.includes('404') && !err.message?.includes('Not found')) {
+            logger.debug(`[HentaiTV] Error: ${err.message}`);
+          }
+        }
+        return [];
+      }
+      
       // ALWAYS poll ALL providers in parallel for maximum stream availability
+      // HentaiTV uses smart slug resolution, others use variation matching
       const [hmmResult, hseResult, htvResult] = await Promise.allSettled([
         tryProviderWithVariations(hentaimamaScraper, 'HentaiMama', slugVariations),
         tryProviderWithVariations(hentaiseaScraper, 'HentaiSea', slugVariations),
-        tryProviderWithVariations(hentaitvScraper, 'HentaiTV', slugVariations)
+        tryHentaiTV(cleanSlug.replace(/-episode-\d+$/, ''), episodeNum)
       ]);
       
       // Collect all successful streams

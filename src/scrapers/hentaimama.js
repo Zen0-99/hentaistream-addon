@@ -2,6 +2,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const logger = require('../utils/logger');
 const { parseDate, extractYear, getMostRecentDate } = require('../utils/dateParser');
+const httpClient = require('../utils/httpClient');
 
 // Cloudflare Worker proxy URL (set via environment variable)
 // Deploy the worker from cloudflare-worker/worker.js to get this URL
@@ -593,18 +594,30 @@ class HentaiMamaScraper {
       
       const seriesArray = Array.from(seriesMap.entries()); // Keep as entries for enrichment
       
-      // Fetch series metadata in controlled batches (5 at a time for optimal performance)
-      const batchSize = 5;
-      const enrichedResults = [];
+      // ===== OPTIMIZED BATCH METADATA FETCHING =====
+      // Use batch fetch via CF Worker: 15-20 URLs per request instead of 5 sequential batches
+      const seriesUrls = seriesArray.map(([slug]) => `${this.baseUrl}/tvshows/${slug}/`);
       
-      for (let i = 0; i < seriesArray.length; i += batchSize) {
-        const batch = seriesArray.slice(i, i + batchSize);
-        const batchPromises = batch.map(async ([slug, series]) => {
+      logger.info(`[HentaiMama] Batch fetching metadata for ${seriesUrls.length} series...`);
+      const startTime = Date.now();
+      
+      // Fetch all series pages in batch (15 URLs per CF Worker request)
+      const batchResults = await httpClient.batchFetch(seriesUrls, { timeout: 30000 });
+      
+      logger.info(`[HentaiMama] Batch fetch completed in ${Date.now() - startTime}ms`);
+      
+      // Process all results
+      let enrichedCount = 0;
+      for (let i = 0; i < seriesArray.length; i++) {
+        const [slug, series] = seriesArray[i];
+        const result = batchResults[i];
+        
+        if (!result || !result.success || !result.body) {
+          continue;
+        }
+        
         try {
-          const seriesPageUrl = `${this.baseUrl}/tvshows/${slug}/`;
-          const seriesResponse = await this.makeRequest(seriesPageUrl, { timeout: 2000 });
-          
-          const $series = cheerio.load(seriesResponse.data);
+          const $series = cheerio.load(result.body);
           
           // Extract proper series cover art
           let seriesCover = $series('.poster img, .sheader img').first().attr('data-src') ||
@@ -748,54 +761,13 @@ class HentaiMamaScraper {
             });
           }
           
-            return { slug, success: true };
-          } catch (err) {
-            // Fallback: try to get metadata from first episode page
-          try {
-            const firstEp = series.episodes[0];
-            if (firstEp && firstEp.slug) {
-              const epUrl = `${this.baseUrl}/episodes/${firstEp.slug}`;
-              const epResponse = await this.makeRequest(epUrl, { timeout: 2000 });
-              
-              const $ep = cheerio.load(epResponse.data);
-              
-              // Extract genres from episode page
-              const epGenres = [];
-              $ep('.tag, .genre, a[rel="tag"]').each((i, tag) => {
-                const genreText = $ep(tag).text().trim();
-                if (genreText && genreText.length > 2 && genreText.length < 30) {
-                  epGenres.push(genreText);
-                }
-              });
-              
-              if (epGenres.length > 0) {
-                series.genres = epGenres;
-              }
-              
-              // Extract description from episode page
-              const epDesc = $ep('meta[property="og:description"]').attr('content') ||
-                            $ep('meta[name="description"]').attr('content') ||
-                            '';
-              
-              if (epDesc && epDesc.length > 10) {
-                series.description = epDesc.substring(0, 200);
-              }
-              
-                return { slug, success: true, source: 'episode-fallback' };
-              }
-            } catch (fallbackErr) {
-              // Both failed
-            }
-            return { slug, success: false };
-          }
-        });
-        
-        // Wait for this batch to complete before starting the next
-        const batchResults = await Promise.allSettled(batchPromises);
-        enrichedResults.push(...batchResults);
+          enrichedCount++;
+        } catch (err) {
+          logger.debug(`[HentaiMama] Error parsing metadata for ${slug}: ${err.message}`);
+        }
       }
       
-      const enrichedCount = enrichedResults.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+      logger.info(`[HentaiMama] Enriched ${enrichedCount}/${seriesArray.length} series with metadata`);
       
       // Convert back to array and apply fallbacks for non-enriched series
       const enrichedSeries = Array.from(seriesArray, ([slug, series]) => {

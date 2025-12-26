@@ -9,6 +9,11 @@ const { GENRE_OPTIONS, STUDIO_OPTIONS } = require('./addon/manifest');
 // Import handlers directly (no SDK builder)
 const { catalogHandler, metaHandler, streamHandler, getManifest } = require('./addon');
 
+// Import optimized HTTP client and cache for pre-warming
+const httpClient = require('./utils/httpClient');
+const cache = require('./cache');
+const slugRegistry = require('./cache/slugRegistry');
+
 // Create Express app
 const app = express();
 
@@ -629,7 +634,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const server = app.listen(config.server.port, () => {
+const server = app.listen(config.server.port, async () => {
   logger.info(`========================================`);
   logger.info(`🚀 ${config.addon.name} v${config.addon.version}`);
   logger.info(`========================================`);
@@ -640,6 +645,52 @@ const server = app.listen(config.server.port, () => {
   logger.info(`Install URL: stremio://localhost:${config.server.port}/manifest.json`);
   logger.info(`========================================`);
   
+  // Pre-warm connection pools (HTTP/2 keep-alive)
+  try {
+    await httpClient.prewarmConnections();
+  } catch (error) {
+    logger.warn(`Connection pool warmup failed: ${error.message}`);
+  }
+  
+  // Pre-warm catalog cache in background (don't block startup)
+  setTimeout(async () => {
+    logger.info('🔥 Pre-warming catalog cache in background...');
+    
+    try {
+      // Import scrapers
+      const hentaimamaScraper = require('./scrapers/hentaimama');
+      const hentaiseaScraper = require('./scrapers/hentaisea');
+      const hentaitvScraper = require('./scrapers/hentaitv');
+      
+      // Pre-warm first page of each provider (in parallel)
+      const warmupPromises = [
+        cache.prewarm(
+          cache.key('catalog', 'hmm-page-1'),
+          cache.getTTL('catalog'),
+          () => hentaimamaScraper.getCatalog(1, null, 'popular')
+        ),
+        cache.prewarm(
+          cache.key('catalog', 'hse-page-1'),
+          cache.getTTL('catalog'),
+          () => hentaiseaScraper.getTrending(1)
+        ),
+        cache.prewarm(
+          cache.key('catalog', 'htv-page-1'),
+          cache.getTTL('catalog'),
+          () => hentaitvScraper.getCatalog(1, null, 'popular')
+        ),
+      ];
+      
+      const results = await Promise.allSettled(warmupPromises);
+      const succeeded = results.filter(r => r.status === 'fulfilled' && r.value).length;
+      
+      logger.info(`✅ Cache warmup complete: ${succeeded}/${warmupPromises.length} providers ready`);
+      logger.info(`📊 Cache stats: ${JSON.stringify(cache.getStats())}`);
+    } catch (error) {
+      logger.warn(`Cache warmup error: ${error.message}`);
+    }
+  }, 5000); // Start warmup 5 seconds after server starts
+  
   // Start self-ping mechanism (Render keep-alive)
   setupSelfPing();
 });
@@ -647,6 +698,22 @@ const server = app.listen(config.server.port, () => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM signal received: closing HTTP server');
+  
+  // Save slug registry to disk
+  try {
+    slugRegistry.shutdown();
+    logger.info('Slug registry saved to disk');
+  } catch (error) {
+    logger.warn(`Slug registry shutdown error: ${error.message}`);
+  }
+  
+  // Close HTTP client connection pools
+  try {
+    await httpClient.closeAll();
+  } catch (error) {
+    logger.warn(`HTTP client shutdown error: ${error.message}`);
+  }
+  
   server.close(() => {
     logger.info('HTTP server closed');
     process.exit(0);
@@ -655,6 +722,22 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   logger.info('SIGINT signal received: closing HTTP server');
+  
+  // Save slug registry to disk
+  try {
+    slugRegistry.shutdown();
+    logger.info('Slug registry saved to disk');
+  } catch (error) {
+    logger.warn(`Slug registry shutdown error: ${error.message}`);
+  }
+  
+  // Close HTTP client connection pools
+  try {
+    await httpClient.closeAll();
+  } catch (error) {
+    logger.warn(`HTTP client shutdown error: ${error.message}`);
+  }
+  
   server.close(() => {
     logger.info('HTTP server closed');
     process.exit(0);

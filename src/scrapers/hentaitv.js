@@ -2,6 +2,8 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const logger = require('../utils/logger');
 const { parseDate, extractYear } = require('../utils/dateParser');
+const httpClient = require('../utils/httpClient');
+const slugRegistry = require('../cache/slugRegistry');
 
 class HentaiTVScraper {
   constructor() {
@@ -37,6 +39,17 @@ class HentaiTVScraper {
       'plot', 'romance', 'comedy', 'fantasy', 'tentacle',
       'incest', 'netorare', 'yuri', 'futanari', 'monster'
     ];
+  }
+
+  /**
+   * Parse episode number from a slug
+   * @param {string} slug - Episode slug (e.g., "series-name-episode-1")
+   * @returns {number|null} Episode number or null if not found
+   */
+  parseEpisodeNumber(slug) {
+    if (!slug) return null;
+    const match = slug.match(/-episode-(\d+)$/i);
+    return match ? parseInt(match[1], 10) : null;
   }
 
   /**
@@ -368,6 +381,10 @@ class HentaiTVScraper {
         
         if (!seriesSlug) return;
         
+        // *** CRITICAL: Store the REAL episode slug in the registry ***
+        // This is the key optimization - we know the actual slug from the URL
+        slugRegistry.set('htv', seriesSlug, episodeNum, episodeSlug);
+        
         // Group by series - accumulate view counts from all episodes
         if (!episodeMap.has(seriesSlug)) {
           episodeMap.set(seriesSlug, {
@@ -378,11 +395,20 @@ class HentaiTVScraper {
             totalViews: views || 0,
             episodeCount: 1,
             maxEpisodeViews: views || 0,
-            episode1Slug: `${seriesSlug}-episode-1`
+            // Store the REAL slug for episode 1 if this is episode 1
+            episode1Slug: episodeNum === 1 ? episodeSlug : `${seriesSlug}-episode-1`,
+            // Track real slugs we've discovered
+            knownSlugs: { [episodeNum]: episodeSlug }
           });
         } else {
           const series = episodeMap.get(seriesSlug);
           series.episodeCount++;
+          // Store this episode's real slug
+          series.knownSlugs[episodeNum] = episodeSlug;
+          // Update episode1Slug if this is episode 1
+          if (episodeNum === 1) {
+            series.episode1Slug = episodeSlug;
+          }
           if (views) {
             series.totalViews += views;
             if (views > series.maxEpisodeViews) {
@@ -405,26 +431,102 @@ class HentaiTVScraper {
       
       logger.info(`[HentaiTV] Found ${seriesArray.length} unique series with view counts from search page ${page}`);
       
-      // Fetch additional metadata (genres, studio) for top items
-      const batchSize = 5;
-      for (let i = 0; i < Math.min(seriesArray.length, 20); i += batchSize) {
-        const batch = seriesArray.slice(i, i + batchSize);
-        await Promise.all(batch.map(async (series) => {
-          try {
-            const pageData = await this.fetchEpisodePageMetadata(series.episode1Slug);
-            if (pageData.genres && pageData.genres.length > 0) {
-              series.genres = pageData.genres;
-            }
-            if (pageData.description) {
-              series.description = pageData.description.substring(0, 300);
-            }
-            if (pageData.studio) {
-              series.studio = pageData.studio;
-            }
-          } catch (e) {
-            // Ignore errors, genres are optional
+      // ===== OPTIMIZED BATCH METADATA FETCHING VIA WORDPRESS API =====
+      // Use axios (this.client) which handles gzip decompression automatically
+      // (undici returns compressed data without auto-decompress)
+      const itemsToFetch = seriesArray.slice(0, 20);
+      
+      if (itemsToFetch.length > 0) {
+        logger.info(`[HentaiTV] Batch fetching metadata via WordPress API for ${itemsToFetch.length} items...`);
+        const startTime = Date.now();
+        
+        // Build WordPress API URLs - use the FIRST KNOWN REAL slug from knownSlugs
+        const fetchPromises = itemsToFetch.map(series => {
+          const knownEpisodes = Object.keys(series.knownSlugs || {});
+          const firstKnownSlug = knownEpisodes.length > 0 
+            ? series.knownSlugs[knownEpisodes[0]] 
+            : series.episode1Slug;
+          const url = `${this.apiUrl}/episodes?slug=${encodeURIComponent(firstKnownSlug)}&_embed`;
+          return this.client.get(url).catch(err => ({ error: err.message }));
+        });
+        
+        const batchResults = await Promise.allSettled(fetchPromises);
+        
+        logger.info(`[HentaiTV] WordPress API batch fetch completed in ${Date.now() - startTime}ms`);
+        
+        // Process results - WordPress API returns arrays
+        let enrichedCount = 0;
+        let emptyResponses = 0;
+        for (let i = 0; i < itemsToFetch.length; i++) {
+          const series = itemsToFetch[i];
+          const result = batchResults[i];
+          
+          // Check for successful response
+          const response = result.status === 'fulfilled' ? result.value : null;
+          if (!response || response.error || !response.data) {
+            continue;
           }
-        }));
+          
+          try {
+            // Axios auto-parses JSON, so response.data is already an array
+            const episodes = response.data;
+            if (!Array.isArray(episodes) || episodes.length === 0) {
+              emptyResponses++;
+              continue;
+            }
+            
+            const ep = episodes[0];
+            
+            // Extract genres and studio from class_list
+            // Format: "genre-big-boobs", "brand-pink-pineapple"
+            if (ep.class_list && Array.isArray(ep.class_list)) {
+              const genres = [];
+              for (const cls of ep.class_list) {
+                if (cls.startsWith('genre-')) {
+                  // Convert "genre-big-boobs" to "Big Boobs"
+                  const genre = cls.replace('genre-', '').split('-')
+                    .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                  if (genre && !genres.includes(genre)) genres.push(genre);
+                }
+                if (cls.startsWith('brand-')) {
+                  // Convert "brand-pink-pineapple" to "Pink Pineapple"
+                  series.studio = cls.replace('brand-', '').split('-')
+                    .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                }
+              }
+              if (genres.length > 0) series.genres = genres;
+            }
+            
+            // Extract description from content.rendered
+            if (ep.content && ep.content.rendered) {
+              // Strip HTML tags and get text
+              const text = ep.content.rendered.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+              if (text) series.description = text.substring(0, 300);
+            }
+            
+            // Extract poster from embedded featured media
+            if (ep._embedded && ep._embedded['wp:featuredmedia'] && ep._embedded['wp:featuredmedia'][0]) {
+              const media = ep._embedded['wp:featuredmedia'][0];
+              if (media.source_url && !series.poster) {
+                series.poster = media.source_url;
+              }
+            }
+            
+            // Store the real slug from API in registry
+            if (ep.slug) {
+              const episodeNum = this.parseEpisodeNumber(ep.slug);
+              if (episodeNum) {
+                slugRegistry.set('htv', series.id, episodeNum, ep.slug);
+              }
+            }
+            
+            enrichedCount++;
+          } catch (e) {
+            logger.debug(`[HentaiTV] Enrichment parse error for ${series.id}: ${e.message}`);
+          }
+        }
+        
+        logger.info(`[HentaiTV] Enriched ${enrichedCount}/${itemsToFetch.length} items with metadata${emptyResponses > 0 ? ` (${emptyResponses} empty API responses)` : ''}`);
       }
       
       return seriesArray;
@@ -1011,15 +1113,97 @@ class HentaiTVScraper {
   }
 
   /**
+   * Find the real episode slug using registry or WordPress API
+   * This is the key optimization - instead of trying 4 variations, we look up or query the exact slug
+   * @param {string} seriesSlug - Normalized series slug (without episode)
+   * @param {number|string} episodeNum - Episode number
+   * @returns {Promise<string|null>} Real slug if found, null otherwise
+   */
+  async findRealSlug(seriesSlug, episodeNum) {
+    // Clean the series slug
+    const cleanSlug = seriesSlug
+      .replace(/^htv-/, '')
+      .replace(/-episode-\d+$/, '')
+      .replace(/-the-animation$/, '');
+    
+    // Step 1: Check the slug registry (instant O(1) lookup)
+    const cachedSlug = slugRegistry.get('htv', cleanSlug, episodeNum);
+    if (cachedSlug) {
+      logger.info(`[HentaiTV] Slug registry HIT: ${cleanSlug}:${episodeNum} -> ${cachedSlug}`);
+      return cachedSlug;
+    }
+    
+    // Step 2: Query WordPress API to find the exact slug
+    logger.info(`[HentaiTV] Slug registry MISS, querying WordPress API for: ${cleanSlug}`);
+    try {
+      const searchTerm = cleanSlug.replace(/-/g, ' ');
+      const apiUrl = `${this.apiUrl}/episodes?search=${encodeURIComponent(searchTerm)}&per_page=30`;
+      
+      const response = await this.client.get(apiUrl, { timeout: 8000 });
+      const episodes = response.data;
+      
+      if (!episodes || episodes.length === 0) {
+        logger.debug(`[HentaiTV] No API results for: ${searchTerm}`);
+        return null;
+      }
+      
+      // Find the episode with matching number
+      // Title format: "Series Name Episode X" or "Series Name Episodio X"
+      for (const ep of episodes) {
+        const title = ep.title?.rendered || '';
+        const match = title.match(/^(.+?)\s+Episod[eo]\s+(\d+)$/i);
+        
+        if (match) {
+          const epNum = parseInt(match[2]);
+          const realSlug = ep.slug;
+          
+          // Store ALL discovered slugs in registry for future use
+          const epSeriesName = match[1].trim().toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-');
+          slugRegistry.set('htv', epSeriesName, epNum, realSlug);
+          
+          // Check if this is the episode we're looking for
+          if (epNum === parseInt(episodeNum)) {
+            // Verify this matches our series (fuzzy match)
+            if (epSeriesName.includes(cleanSlug) || cleanSlug.includes(epSeriesName)) {
+              logger.info(`[HentaiTV] WordPress API found: ${realSlug}`);
+              return realSlug;
+            }
+          }
+        }
+      }
+      
+      logger.debug(`[HentaiTV] Episode ${episodeNum} not found in API results`);
+      return null;
+      
+    } catch (error) {
+      logger.debug(`[HentaiTV] WordPress API query failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Get streams for an episode
-   * Note: HentaiTV uses an interstitial page and nhplayer.com for video hosting.
-   * Direct extraction is challenging due to JavaScript-rendered content.
-   * @param {string} episodeId - Episode ID with prefix
+   * OPTIMIZED: Uses slug registry and WordPress API instead of guessing
+   * @param {string} episodeId - Episode ID with prefix (e.g., "htv-series-name-episode-1" or just the slug)
    */
   async getStreams(episodeId) {
     try {
-      const slug = episodeId.replace(this.prefix, '');
+      let slug = episodeId.replace(this.prefix, '');
       logger.info(`[HentaiTV] Fetching streams for: ${slug}`);
+      
+      // Parse episode number from the slug
+      const episodeMatch = slug.match(/-episode-(\d+)$/) || slug.match(/-(\d+)$/);
+      const episodeNum = episodeMatch ? parseInt(episodeMatch[1]) : 1;
+      const baseSlug = slug.replace(/-episode-\d+$/, '').replace(/-\d+$/, '');
+      
+      // Try to find the real slug via registry or API
+      const realSlug = await this.findRealSlug(baseSlug, episodeNum);
+      if (realSlug && realSlug !== slug) {
+        logger.info(`[HentaiTV] Using real slug: ${realSlug} (instead of ${slug})`);
+        slug = realSlug;
+      }
       
       // Build the episode URL - HentaiTV uses /hentai/series-episode-X/
       const episodeUrl = `${this.baseUrl}/hentai/${slug}/`;
