@@ -36,7 +36,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Log all requests - detailed logging to catch 404 issues
 app.use((req, res, next) => {
-  logger.info(`📥 ${req.method} ${req.path} | Query: ${JSON.stringify(req.query)} | Params: ${JSON.stringify(req.params)}`);
+  logger.info(`${req.method} ${req.path} | Query: ${JSON.stringify(req.query)} | Params: ${JSON.stringify(req.params)}`);
   next();
 });
 
@@ -57,7 +57,7 @@ app.get('/health', (req, res) => {
 function setupSelfPing() {
   // Only enable in production (Render)
   if (config.server.env !== 'production') {
-    logger.info('⏭️  Self-ping disabled (not in production mode)');
+    logger.info('⏭Self-ping disabled (not in production mode)');
     return;
   }
 
@@ -67,7 +67,7 @@ function setupSelfPing() {
   const selfUrl = process.env.RENDER_EXTERNAL_URL;
   
   if (!selfUrl) {
-    logger.warn('⚠️  RENDER_EXTERNAL_URL not found - self-ping disabled');
+    logger.warn('RENDER_EXTERNAL_URL not found - self-ping disabled');
     return;
   }
 
@@ -84,18 +84,18 @@ function setupSelfPing() {
       const startTime = Date.now();
       client.get(pingUrl, (res) => {
         const duration = Date.now() - startTime;
-        logger.info(`✅ Self-ping successful (${res.statusCode}) - ${duration}ms`);
+        logger.info(`Self-ping successful (${res.statusCode}) - ${duration}ms`);
       }).on('error', (err) => {
-        logger.error('❌ Self-ping failed:', err.message);
+        logger.error('Self-ping failed:', err.message);
       });
     } catch (error) {
-      logger.error('❌ Self-ping error:', error.message);
+      logger.error('Self-ping error:', error.message);
     }
   }, PING_INTERVAL);
 
   // Do an initial ping after 1 minute
   setTimeout(() => {
-    logger.info('🔄 Performing initial self-ping...');
+    logger.info('Performing initial self-ping...');
   }, 60000);
 }
 
@@ -660,12 +660,11 @@ app.use((err, req, res, next) => {
 // Start server
 const server = app.listen(config.server.port, async () => {
   logger.info(`========================================`);
-  logger.info(`🚀 ${config.addon.name} v${config.addon.version}`);
+  logger.info(`${config.addon.name} v${config.addon.version}`);
   logger.info(`========================================`);
   logger.info(`Server running on port ${config.server.port}`);
   logger.info(`Environment: ${config.server.env}`);
   logger.info(`Manifest URL: http://localhost:${config.server.port}/manifest.json`);
-  logger.info(`Health Check: http://localhost:${config.server.port}/health`);
   logger.info(`Install URL: stremio://localhost:${config.server.port}/manifest.json`);
   logger.info(`========================================`);
   
@@ -678,7 +677,7 @@ const server = app.listen(config.server.port, async () => {
   
   // Pre-warm catalog cache in background (don't block startup)
   setTimeout(async () => {
-    logger.info('🔥 Pre-warming catalog cache in background...');
+    logger.info('Pre-warming catalog cache in background...');
     
     try {
       // Import scrapers
@@ -708,8 +707,8 @@ const server = app.listen(config.server.port, async () => {
       const results = await Promise.allSettled(warmupPromises);
       const succeeded = results.filter(r => r.status === 'fulfilled' && r.value).length;
       
-      logger.info(`✅ Cache warmup complete: ${succeeded}/${warmupPromises.length} providers ready`);
-      logger.info(`📊 Cache stats: ${JSON.stringify(cache.getStats())}`);
+      logger.info(`Cache warmup complete: ${succeeded}/${warmupPromises.length} providers ready`);
+      logger.info(`Cache stats: ${JSON.stringify(cache.getStats())}`);
     } catch (error) {
       logger.warn(`Cache warmup error: ${error.message}`);
     }

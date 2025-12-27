@@ -126,13 +126,19 @@ function getBaseManifest() {
         id: 'hentai-top-rated',
         name: 'Top Rated',
         extra: [{ name: 'search' }, { name: 'skip' }, { name: 'genre', options: GENRE_OPTIONS }],
+        // Hide from home screen by default - user can enable in Browse view
+        // This prevents adult content from appearing on the main home screen
+        behaviorHints: { notForHome: true }
       },
       // Monthly Releases - updated in last 30 days
+      // NOTE: No search on this catalog - search would bypass the date filter
+      // Users should use "Top Rated" or "All Hentai" for search
       {
         type: 'hentai',
         id: 'hentai-monthly',
         name: 'New Releases',
-        extra: [{ name: 'search' }, { name: 'skip' }, { name: 'genre', options: GENRE_OPTIONS }],
+        extra: [{ name: 'skip' }, { name: 'genre', options: GENRE_OPTIONS }],
+        behaviorHints: { notForHome: true }
       },
       // Studios - filter by animation studio
       {
@@ -140,6 +146,7 @@ function getBaseManifest() {
         id: 'hentai-studios',
         name: 'Studios',
         extra: [{ name: 'skip' }, { name: 'genre', options: STUDIO_OPTIONS }],
+        behaviorHints: { notForHome: true }
       },
       // Release Year - filter by year
       {
@@ -147,13 +154,15 @@ function getBaseManifest() {
         id: 'hentai-years',
         name: 'Release Year',
         extra: [{ name: 'skip' }, { name: 'genre', options: YEAR_OPTIONS }],
+        behaviorHints: { notForHome: true }
       },
-      // All Hentai - with genre filter
+      // All Hentai - with genre filter and search
       {
         type: 'hentai',
         id: 'hentai-all',
         name: 'All Hentai',
         extra: [{ name: 'search' }, { name: 'skip' }, { name: 'genre', options: GENRE_OPTIONS }],
+        behaviorHints: { notForHome: true }
       },
     ],
   

@@ -8,6 +8,7 @@ const { aggregateCatalogs, isDuplicate, mergeSeries, calculateAverageRating } = 
 const ratingNormalizer = require('../../utils/ratingNormalizer');
 const { isWithinWeek, isWithinMonth, compareDatesNewestFirst } = require('../../utils/dateParser');
 const { shouldIncludeSeries, DEFAULT_CONFIG } = require('../../utils/configParser');
+const { genreMatcher } = require('../../utils/genreMatcher');
 
 // Scraper map for easy lookup
 const SCRAPER_MAP = {
@@ -15,6 +16,54 @@ const SCRAPER_MAP = {
   hse: hentaiseaScraper,
   htv: hentaitvScraper
 };
+
+/**
+ * Genre name to slug mapping for HentaiMama
+ * Maps display names (from GENRE_OPTIONS in manifest) to actual URL slugs
+ * This fixes issues like "Animal Girls" -> "animal-ears" (not "animal-girls")
+ */
+const GENRE_SLUG_MAP = {
+  // Special mappings where display name != URL slug
+  'animal girls': 'animal-ears',
+  'boob job': 'paizuri',
+  'tits fuck': 'paizuri',
+  'blow job': 'blowjob',
+  'hand job': 'handjob',
+  'foot job': 'footjob',
+  'cream pie': 'creampie',
+  'double penetration': 'dp',
+  'group sex': 'gangbang',
+  'large breasts': 'big-boobs',
+  'big boobs': 'big-boobs',
+  'big bust': 'big-boobs',
+  'female teacher': 'teacher',
+  'female doctor': 'doctor',
+  'internal cumshot': 'creampie',
+  'oral sex': 'blowjob',
+  'school girl': 'school-girls',
+  'schoolgirl': 'school-girls',
+  'step daughter': 'step-family',
+  'step mother': 'step-family',
+  'step sister': 'step-family',
+  'sex toys': 'toys',
+  'three some': 'threesome',
+  'cute & funny': 'cute-funny',
+  // Note: Most genres use simple kebab-case conversion
+};
+
+/**
+ * Convert genre display name to URL slug for a provider
+ * Uses genreMatcher for proper slug mapping
+ * @param {string} genreName - Display name like "Animal Girls"
+ * @param {string} provider - Provider name (hentaimama, hentaisea, hentaitv)
+ * @returns {string} URL slug like "animal-ears"
+ */
+function genreNameToSlug(genreName, provider = 'hentaimama') {
+  if (!genreName) return null;
+  
+  // Use genreMatcher for provider-specific slug mapping
+  return genreMatcher.getSlugForProvider(genreName, provider);
+}
 
 /**
  * Get all available scrapers for catalog aggregation
@@ -316,7 +365,12 @@ async function catalogHandler(args) {
   
   // Use extra genre if provided, otherwise use catalog genre
   // For studios/years catalogs, don't use genre for source fetching - filter locally instead
-  const genre = (studioFilter || yearFilter) ? catalogGenre : (extraGenre ? extraGenre.toLowerCase().replace(/\s+/g, '-') : catalogGenre);
+  // Use genreNameToSlug() to properly map display names to URL slugs
+  const genre = (studioFilter || yearFilter) ? catalogGenre : (extraGenre ? genreNameToSlug(extraGenre) : catalogGenre);
+  
+  if (extraGenre && genre !== extraGenre.toLowerCase().replace(/\s+/g, '-')) {
+    logger.info(`Genre slug mapped: "${extraGenre}" → "${genre}"`);
+  }
 
   const skip = parseInt(extra.skip) || 0;
   const limit = parseInt(extra.limit) || 20; // Use Stremio's requested limit (usually 20)
@@ -518,26 +572,37 @@ async function catalogHandler(args) {
   const brokenSeriesSet = new Set(await cache.get(brokenSeriesKey) || []);
   let workingSet = catalogData.series.filter(series => !brokenSeriesSet.has(series.id));
   
-  // CRITICAL: Apply local genre filter to ensure only matching content is shown
-  // This is a safety net - some providers might return unfiltered results
+  // CRITICAL: Apply smart genre filter to ensure only matching content is shown
+  // Uses GenreMatcher for intelligent matching with synonyms, hierarchies, and exclusions
+  // Threshold of 70 allows parent-child matches but prevents false positives
   if (extraGenre && !studioFilter && !yearFilter) {
     const beforeGenreFilter = workingSet.length;
-    const normalizedGenre = extraGenre.toLowerCase().replace(/-/g, ' ').trim();
     
     workingSet = workingSet.filter(series => {
       if (!series.genres || !Array.isArray(series.genres)) return false;
       
-      // Check if any genre matches (case-insensitive, partial match)
-      return series.genres.some(g => {
-        const normalizedSeriesGenre = g.toLowerCase().trim();
-        return normalizedSeriesGenre === normalizedGenre ||
-               normalizedSeriesGenre.includes(normalizedGenre) ||
-               normalizedGenre.includes(normalizedSeriesGenre);
-      });
+      // Use smart genre matching with 70-point threshold
+      // This handles:
+      // - Exact matches (100 points): "Cat Girl" = "Cat Girl"
+      // - Synonyms (90 points): "Cat Girl" = "Nekomimi"
+      // - Parent-child (80 points): "Animal Girls" matches items tagged "Cat Girl"
+      // - Grandparent (70 points): 2-level deep hierarchy matching
+      // - Explicit exclusions (0 points): "Female Teacher" ≠ "Female Doctor"
+      const matches = genreMatcher.matches(extraGenre, series.genres, 70);
+      
+      // Debug: log best score for non-matching items in first few checks
+      if (!matches && beforeGenreFilter < 200) {
+        const bestScore = genreMatcher.getBestScore(extraGenre, series.genres);
+        if (bestScore > 0) {
+          logger.debug(`Genre near-miss: "${series.name}" scored ${bestScore} for "${extraGenre}" (genres: ${series.genres.join(', ')})`);
+        }
+      }
+      
+      return matches;
     });
     
     if (beforeGenreFilter !== workingSet.length) {
-      logger.info(`Genre filter (${extraGenre}): ${beforeGenreFilter} → ${workingSet.length} items (removed ${beforeGenreFilter - workingSet.length} non-matching)`);
+      logger.info(`Genre filter (${extraGenre}): ${beforeGenreFilter} → ${workingSet.length} items (smart match, threshold 70)`);
     }
   }
   

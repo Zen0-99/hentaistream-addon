@@ -202,11 +202,17 @@ async function batchFetch(urls, options = {}) {
   const axios = require('axios');
   
   const BATCH_SIZE = 15; // URLs per batch request (CF Worker handles up to 20)
+  const MAX_RETRIES = 2; // Retry failed batches up to 2 times
+  const RETRY_DELAY = 1000; // 1 second delay between retries
+  const BATCH_DELAY = 300; // 300ms delay between batches to avoid rate limiting
   const results = [];
+  const failedUrls = []; // Track URLs that need retry
   
-  // Split URLs into batches
-  for (let i = 0; i < urls.length; i += BATCH_SIZE) {
-    const batch = urls.slice(i, i + BATCH_SIZE);
+  /**
+   * Helper to fetch a batch of URLs
+   */
+  async function fetchBatch(batch, attempt = 1) {
+    const batchResults = [];
     
     try {
       const proxyUrl = new URL(CF_PROXY_URL);
@@ -219,7 +225,7 @@ async function batchFetch(urls, options = {}) {
         proxyUrl.searchParams.set('body', options.body);
       }
       
-      logger.info(`[HttpClient] Batch fetching ${batch.length} URLs via CF Worker`);
+      logger.info(`[HttpClient] Batch fetching ${batch.length} URLs via CF Worker (attempt ${attempt})`);
       
       // Use axios instead of undici - axios auto-decompresses gzip/deflate/br
       const response = await axios.get(proxyUrl.toString(), {
@@ -230,23 +236,100 @@ async function batchFetch(urls, options = {}) {
       
       // axios already parses JSON if Content-Type is application/json
       // but CF Worker may return text/plain, so handle both cases
-      const batchResults = typeof response.data === 'string' 
+      const parsed = typeof response.data === 'string' 
         ? JSON.parse(response.data) 
         : response.data;
       
-      if (Array.isArray(batchResults)) {
-        results.push(...batchResults);
-        logger.info(`[HttpClient] Batch complete: ${batchResults.filter(r => r.success).length}/${batchResults.length} successful`);
+      if (Array.isArray(parsed)) {
+        const successCount = parsed.filter(r => r.success).length;
+        const failCount = parsed.length - successCount;
+        logger.info(`[HttpClient] Batch complete: ${successCount}/${parsed.length} successful`);
+        
+        // Separate successful and failed results
+        for (const result of parsed) {
+          if (result.success) {
+            batchResults.push(result);
+          } else {
+            // Track failed URLs for retry
+            batchResults.push({ ...result, needsRetry: true });
+          }
+        }
+        
+        return batchResults;
       } else {
-        // Error response
-        logger.error(`[HttpClient] Batch error: ${batchResults.error || 'Unknown error'}`);
-        batch.forEach(url => results.push({ url, status: 0, error: batchResults.error, success: false }));
+        // Error response from CF Worker
+        logger.error(`[HttpClient] Batch error: ${parsed.error || 'Unknown error'}`);
+        return batch.map(url => ({ url, status: 0, error: parsed.error, success: false, needsRetry: true }));
       }
     } catch (error) {
       logger.error(`[HttpClient] Batch request failed: ${error.message}`);
-      // Mark all URLs in this batch as failed
-      batch.forEach(url => results.push({ url, status: 0, error: error.message, success: false }));
+      // Mark all URLs in this batch as failed and needing retry
+      return batch.map(url => ({ url, status: 0, error: error.message, success: false, needsRetry: true }));
     }
+  }
+  
+  // Split URLs into batches and process with delays
+  const batches = [];
+  for (let i = 0; i < urls.length; i += BATCH_SIZE) {
+    batches.push(urls.slice(i, i + BATCH_SIZE));
+  }
+  
+  // Process batches with delay between them to avoid rate limiting
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex];
+    
+    // Add delay between batches (not before first batch)
+    if (batchIndex > 0) {
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+    }
+    
+    const batchResults = await fetchBatch(batch, 1);
+    
+    // Separate successful results and track failed ones
+    for (const result of batchResults) {
+      if (result.success) {
+        results.push(result);
+      } else if (result.needsRetry) {
+        failedUrls.push(result.url);
+      } else {
+        results.push(result);
+      }
+    }
+  }
+  
+  // Retry failed URLs with smaller batch size and delays
+  if (failedUrls.length > 0 && MAX_RETRIES > 0) {
+    logger.info(`[HttpClient] Retrying ${failedUrls.length} failed URLs...`);
+    
+    // Wait before retry
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    
+    // Retry with smaller batch size (5 instead of 15)
+    const RETRY_BATCH_SIZE = 5;
+    const retryBatches = [];
+    for (let i = 0; i < failedUrls.length; i += RETRY_BATCH_SIZE) {
+      retryBatches.push(failedUrls.slice(i, i + RETRY_BATCH_SIZE));
+    }
+    
+    for (let batchIndex = 0; batchIndex < retryBatches.length; batchIndex++) {
+      const batch = retryBatches[batchIndex];
+      
+      // Add delay between retry batches
+      if (batchIndex > 0) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      }
+      
+      const retryResults = await fetchBatch(batch, 2);
+      
+      for (const result of retryResults) {
+        // On final retry, don't mark for retry anymore
+        delete result.needsRetry;
+        results.push(result);
+      }
+    }
+    
+    const retrySuccessCount = results.filter(r => failedUrls.includes(r.url) && r.success).length;
+    logger.info(`[HttpClient] Retry complete: recovered ${retrySuccessCount}/${failedUrls.length} URLs`);
   }
   
   return results;

@@ -101,22 +101,26 @@ function normalizeForComparison(str) {
  * @returns {boolean} True if series should be included, false if filtered out
  */
 function shouldIncludeSeries(series, config) {
-  // Check genre blacklist
+  // Check genre blacklist using EXACT matching to prevent false positives
+  // e.g., blacklisting "3" should NOT block "3D", blacklisting "nurse" should NOT block "nurses"
   if (config.blacklistGenres && config.blacklistGenres.length > 0 && series.genres) {
     const seriesGenres = series.genres.map(g => normalizeForComparison(g));
     for (const blacklisted of config.blacklistGenres) {
       const normalizedBlacklisted = normalizeForComparison(blacklisted);
-      if (seriesGenres.some(g => g.includes(normalizedBlacklisted) || normalizedBlacklisted.includes(g))) {
+      // EXACT match only - no substring matching
+      if (seriesGenres.some(g => g === normalizedBlacklisted)) {
         return false;
       }
     }
   }
 
-  // Check studio blacklist
+  // Check studio blacklist - use substring matching for flexibility
+  // Studio names can vary (e.g., "Studio ABC" vs "ABC Animation")
   if (config.blacklistStudios && config.blacklistStudios.length > 0 && series.studio) {
     const normalizedStudio = normalizeForComparison(series.studio);
     for (const blacklisted of config.blacklistStudios) {
       const normalizedBlacklisted = normalizeForComparison(blacklisted);
+      // For studios, substring matching is acceptable and useful
       if (normalizedStudio.includes(normalizedBlacklisted) || normalizedBlacklisted.includes(normalizedStudio)) {
         return false;
       }

@@ -297,15 +297,100 @@ class HentaiMamaScraper {
   }
 
   /**
-   * Hybrid search: tag-based, keyword, and title search
+   * Search using HentaiMama's native search endpoint
+   * OPTIMIZED: Uses /?s=query instead of fetching catalog pages
    * @param {string} query - Search query
    * @returns {Array} - Array of series matching the query
    */
   async search(query) {
     try {
       const normalizedQuery = query.toLowerCase().trim();
-      logger.info(`Searching HentaiMama for: "${query}"`);
+      logger.info(`Searching HentaiMama for: "${query}" using native search API`);
 
+      // Use HentaiMama's native search endpoint - MUCH faster than catalog filtering
+      const searchUrl = `${this.baseUrl}/?s=${encodeURIComponent(query)}`;
+      logger.info(`→ Fetching URL: ${searchUrl}`);
+      
+      const response = await this.makeRequest(searchUrl, { timeout: 10000 });
+      const $ = cheerio.load(response.data);
+      
+      const results = [];
+      
+      // Parse search results - they use article elements with poster class
+      $('article.item, .result-item, .search-item, article').each((i, elem) => {
+        try {
+          const $item = $(elem);
+          
+          // Get link to series/tvshow page
+          const link = $item.find('a[href*="/tvshows/"]').first().attr('href') ||
+                      $item.find('a').first().attr('href');
+          
+          if (!link || !link.includes('/tvshows/')) return;
+          
+          // Extract series slug from URL
+          const slugMatch = link.match(/\/tvshows\/([^\/]+)\/?/);
+          if (!slugMatch) return;
+          const seriesSlug = slugMatch[1];
+          
+          // Get title
+          const title = $item.find('.data h3, .title, h3, .episodiotitle').first().text().trim() ||
+                       $item.find('a[href*="/tvshows/"]').first().attr('title') ||
+                       seriesSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          
+          if (!title) return;
+          
+          // Get poster image
+          const poster = $item.find('img').first().attr('data-src') ||
+                        $item.find('img').first().attr('src') || '';
+          
+          // Get rating if available
+          const ratingText = $item.find('.rating, .imdb, .vote').first().text().trim();
+          const ratingMatch = ratingText.match(/(\d+(?:\.\d+)?)/);
+          const rating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+          
+          // Get year if available
+          const yearText = $item.find('.year, .date, span.year').first().text().trim();
+          const yearMatch = yearText.match(/(19|20)\d{2}/);
+          const year = yearMatch ? parseInt(yearMatch[0]) : null;
+          
+          // Get genres if available
+          const genres = [];
+          $item.find('.sgeneros a, .genres a, .tag').each((j, genreElem) => {
+            const genre = $(genreElem).text().trim();
+            if (genre && genre.length > 1 && genre.length < 30) {
+              genres.push(genre);
+            }
+          });
+          
+          // Avoid duplicates
+          const id = `hmm-${seriesSlug}`;
+          if (results.some(r => r.id === id)) return;
+          
+          results.push({
+            id,
+            name: title,
+            poster: poster.startsWith('http') ? poster : (poster ? `${this.baseUrl}${poster}` : ''),
+            type: 'series',
+            rating: rating,
+            year: year,
+            genres: genres.length > 0 ? genres : undefined,
+            seriesSlug: seriesSlug
+          });
+        } catch (parseError) {
+          // Skip malformed items
+        }
+      });
+      
+      logger.info(`Native search found ${results.length} results for "${query}"`);
+      
+      // If native search returns results, use them
+      if (results.length > 0) {
+        return results.slice(0, 20); // Limit to 20 results
+      }
+      
+      // Fallback: If native search returned no results, try genre/tag search
+      logger.info(`Native search returned no results, trying tag/genre search for "${query}"`);
+      
       // Strategy 1: Tag/Genre search
       // Check if query matches any genre (case-insensitive)
       const genres = await this.getGenres();
@@ -330,83 +415,10 @@ class HentaiMamaScraper {
         return catalog.slice(0, 20); // Limit to exactly 20 results
       }
 
-      // Strategy 3: Title search
-      // Fetch multiple pages to ensure we find matches
-      logger.info(`Title search: filtering catalog for "${query}"`);
-      
-      // Fetch first 3 pages (60 series total) for better search coverage
-      const catalogPromises = [
-        this.getCatalog(1, null, 'popular'),
-        this.getCatalog(2, null, 'popular'),
-        this.getCatalog(3, null, 'popular')
-      ];
-      
-      const catalogPages = await Promise.all(catalogPromises);
-      const allSeries = catalogPages.flat();
-      
-      // Deduplicate by ID
-      const uniqueSeries = Array.from(
-        new Map(allSeries.map(s => [s.id, s])).values()
-      );
-      
-      logger.info(`Searching across ${uniqueSeries.length} series`);
-      
-      // Log first few series names for debugging
-      logger.info(`Sample series names: ${uniqueSeries.slice(0, 5).map(s => s.name).join(', ')}`);
-      
-      // Split query into words for flexible matching (minimum 2 chars)
-      const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
-      logger.info(`Search query: "${normalizedQuery}", words: [${queryWords.join(', ')}]`);
-      
-      const results = uniqueSeries.filter(series => {
-        const seriesName = series.name.toLowerCase();
-        const seriesId = series.id.toLowerCase();
-        
-        // Also check genres (series.genres is an array)
-        const seriesGenres = (series.genres || []).map(g => g.toLowerCase()).join(' ');
-        
-        // Check English title (ghost field for search)
-        const englishTitle = (series.englishTitle || '').toLowerCase();
-        
-        // Log each series being checked (only first 3 for debugging)
-        if (uniqueSeries.indexOf(series) < 3) {
-          logger.info(`Checking series: "${series.name}" (id: ${series.id})`);
-          logger.info(`  - englishTitle: "${series.englishTitle || 'none'}"`);
-          logger.info(`  - genres: [${series.genres ? series.genres.join(', ') : 'none'}]`);
-          logger.info(`  - seriesName.includes("${normalizedQuery}"): ${seriesName.includes(normalizedQuery)}`);
-          logger.info(`  - englishTitle.includes("${normalizedQuery}"): ${englishTitle.includes(normalizedQuery)}`);
-          logger.info(`  - seriesId.includes("${normalizedQuery}"): ${seriesId.includes(normalizedQuery)}`);
-          logger.info(`  - seriesGenres.includes("${normalizedQuery}"): ${seriesGenres.includes(normalizedQuery)}`);
-        }
-        
-        // Match if ANY query word is in series name, English title, ID, OR GENRES
-        // OR if the full query is in any of those fields
-        const matches = seriesName.includes(normalizedQuery) || 
-               englishTitle.includes(normalizedQuery) ||
-               seriesId.includes(normalizedQuery) ||
-               seriesGenres.includes(normalizedQuery) ||
-               queryWords.some(word => 
-                 seriesName.includes(word) || 
-                 englishTitle.includes(word) ||
-                 seriesId.includes(word) || 
-                 seriesGenres.includes(word)
-               );
-        
-        if (matches) {
-          logger.info(`✓ MATCH: "${series.name}" (matched in: ${
-            seriesName.includes(normalizedQuery) || queryWords.some(w => seriesName.includes(w)) ? 'name ' : ''
-          }${englishTitle.includes(normalizedQuery) || queryWords.some(w => englishTitle.includes(w)) ? 'englishTitle ' : ''
-          }${seriesId.includes(normalizedQuery) || queryWords.some(w => seriesId.includes(w)) ? 'id ' : ''
-          }${seriesGenres.includes(normalizedQuery) || queryWords.some(w => seriesGenres.includes(w)) ? 'genres' : ''})`);
-        }
-        
-        return matches;
-      });
-
-      logger.info(`Title search found ${results.length} matches for "${query}"`);
-      
-      // Return max 20 results (1 page worth)
-      return results.slice(0, 20);
+      // If all strategies fail, return empty array
+      // Native search endpoint should have caught most valid queries
+      logger.info(`No results found for "${query}" from any search strategy`);
+      return [];
 
     } catch (error) {
       logger.error(`Error searching HentaiMama for "${query}":`, error.message);
@@ -819,9 +831,55 @@ class HentaiMamaScraper {
         return series;
       });
 
-      logger.info(`Found ${enrichedSeries.length} series (${enrichedCount} with full metadata)`);
+      // QUALITY GATE: Filter out series with severely incomplete metadata
+      // Only cache items that have at least SOME useful metadata beyond the basic scrape
+      // This prevents polluting the cache with low-quality items from failed batch fetches
+      const qualitySeries = enrichedSeries.filter(series => {
+        // Must have basic fields
+        if (!series.id || !series.name || !series.poster) {
+          return false;
+        }
+        
+        // Calculate metadata quality score
+        let qualityScore = 0;
+        
+        // Core metadata (required for good user experience)
+        if (series.description && series.description.length > 20 && 
+            !series.description.match(/^\d+ episodes?$/)) {
+          qualityScore += 30; // Has real description (not just "X episodes")
+        }
+        if (series.rating && series.rating > 0) {
+          qualityScore += 25; // Has rating
+        }
+        if (series.genres && series.genres.length > 1) {
+          qualityScore += 20; // Has multiple genres (not just fallback "Hentai")
+        }
+        if (series.year || series.releaseInfo) {
+          qualityScore += 15; // Has year
+        }
+        if (series.studio) {
+          qualityScore += 10; // Has studio
+        }
+        
+        // Minimum quality threshold: need at least 30 points
+        // This ensures we have at least a description OR rating OR multiple genres
+        const passesThreshold = qualityScore >= 30;
+        
+        if (!passesThreshold) {
+          logger.debug(`[HentaiMama] Low quality metadata for "${series.name}" (score: ${qualityScore}) - will retry later`);
+        }
+        
+        return passesThreshold;
+      });
       
-      return enrichedSeries;
+      const droppedCount = enrichedSeries.length - qualitySeries.length;
+      if (droppedCount > 0) {
+        logger.info(`[HentaiMama] Quality gate: ${droppedCount}/${enrichedSeries.length} series dropped (incomplete metadata)`);
+      }
+
+      logger.info(`Found ${qualitySeries.length} series (${enrichedCount} with full metadata)`);
+      
+      return qualitySeries;
 
     } catch (error) {
       logger.error('Error fetching HentaiMama catalog:', error.message);
@@ -1236,9 +1294,17 @@ class HentaiMamaScraper {
         logger.info(`Using generated description (original was promotional): ${description}`);
       }
       
+      // Log metadata summary for debugging
+      logger.info(`Meta data for ${title}: studio="${studio || 'none'}", genres=${filteredGenres.join(', ') || 'none'}`);
+      
+      // Use the ACTUAL series slug for the ID, not the original request ID
+      // This ensures metadata is consistent even when catalog used a derived/guessed slug
+      const correctId = `hmm-${seriesSlug}`;
+      
       return {
-        id: seriesId,
-        seriesId: `hmm-${seriesSlug}`,
+        id: correctId,
+        originalId: seriesId, // Keep original for reference/debugging
+        seriesId: correctId,
         seriesSlug: seriesSlug,
         name: title,
         poster: poster || undefined,
