@@ -1,145 +1,86 @@
-==> Deploying...
-2025-12-26 21:44:59 [info]: ========================================
-2025-12-26 21:44:59 [info]: 🚀 HentaiStream v0.1.0
-2025-12-26 21:44:59 [info]: ========================================
-2025-12-26 21:44:59 [info]: Server running on port 10000
-2025-12-26 21:44:59 [info]: Environment: production
-2025-12-26 21:44:59 [info]: Manifest URL: http://localhost:10000/manifest.json
-2025-12-26 21:44:59 [info]: Health Check: http://localhost:10000/health
-2025-12-26 21:44:59 [info]: Install URL: stremio://localhost:10000/manifest.json
-2025-12-26 21:44:59 [info]: ========================================
-2025-12-26 21:44:59 [info]: [HttpClient] Pre-warming connection pools...
-2025-12-26 21:44:59 [info]: [HttpClient] CF Worker proxy is responsive
-2025-12-26 21:44:59 [info]: [HttpClient] Connection pools ready
-2025-12-26 21:44:59 [info]: 🔄 Self-ping enabled: https://hentaistream-addon.onrender.com/health every 14 minutes
-2025-12-26 21:45:00 [info]: Found 101 genres
-2025-12-26 21:45:00 [info]: Manifest loaded with 10 catalogs
-2025-12-26 21:45:00 [info]: 📥 HEAD / | Query: {} | Params: {}
-2025-12-26 21:45:04 [info]: 🔥 Pre-warming catalog cache in background...
-2025-12-26 21:45:04 [info]: Fetching HentaiMama catalog page 1 (sort: popular)
-2025-12-26 21:45:04 [info]: → Fetching URL: https://hentaimama.io/hentai-series/?filter=rating
-2025-12-26 21:45:04 [info]: [HentaiSea] Fetching trending page 1: https://hentaisea.com/trending/page/1/
-2025-12-26 21:45:04 [info]: [HentaiTV] Fetching catalog from search page 1: https://hentai.tv/?s=
-2025-12-26 21:45:05 [info]: Found 30 elements with selector: article
-2025-12-26 21:45:05 [info]: [HentaiMama] Batch fetching metadata for 30 series...
-2025-12-26 21:45:05 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
 ==> Your service is live 🎉
+2025-12-27 00:39:46 [info]: [HentaiSea] Batch fetching metadata for 20 trending items...
 ==> 
-2025-12-26 21:45:06 [info]: [HentaiTV] Found 19 unique series with view counts from search page 1
-2025-12-26 21:45:06 [info]: [HentaiTV] Batch fetching metadata via WordPress API for 19 items...
 ==> ///////////////////////////////////////////////////////////
 ==> 
 ==> Available at your primary URL https://hentaistream-addon.onrender.com
 ==> 
-2025-12-26 21:45:07 [error]: [HttpClient] Batch request failed: Unexpected token '�', "����W��~"... is not valid JSON
-2025-12-26 21:45:07 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
 ==> ///////////////////////////////////////////////////////////
-2025-12-26 21:45:08 [info]: [HentaiTV] WordPress API batch fetch completed in 1699ms
-2025-12-26 21:45:08 [info]: [HentaiTV] Enriched 19/19 items with metadata
-2025-12-26 21:45:08 [info]: [HentaiSea] Batch fetching metadata for 20 trending items...
-2025-12-26 21:45:09 [error]: [HttpClient] Batch request failed: Unexpected token '�', "����W��~"... is not valid JSON
-2025-12-26 21:45:09 [info]: [HentaiMama] Batch fetch completed in 3899ms
-2025-12-26 21:45:09 [info]: [HentaiMama] Enriched 0/30 series with metadata
-2025-12-26 21:45:09 [info]: Found 30 series (0 with full metadata)
-2025-12-26 21:45:10 [info]: 📥 GET / | Query: {} | Params: {}
-2025-12-26 21:45:10 [info]: [HentaiSea] Batch fetch completed in 1361ms
-2025-12-26 21:45:14 [info]: [HentaiSea] Enriched 20/20 items with metadata
-2025-12-26 21:45:14 [info]: [HentaiSea] Items with genres: 20/30
-2025-12-26 21:45:14 [info]: [HentaiSea] Trending complete: 30 items (page 1)
-2025-12-26 21:45:14 [info]: 📥 GET /configure | Query: {} | Params: {}
-2025-12-26 21:45:14 [info]: ✅ Cache warmup complete: 3/3 providers ready
-2025-12-26 21:45:14 [info]: 📊 Cache stats: {"memorySize":3,"pendingRefreshes":0,"diskEnabled":true,"staleWhileRevalidate":true}
-2025-12-26 21:45:35 [info]: 📥 GET /manifest.json | Query: {} | Params: {}
-2025-12-26 21:45:35 [info]: Serving manifest (10719 bytes)
-2025-12-26 21:45:39 [info]: 📥 GET /catalog/hentai/hentai-top-rated.json | Query: {} | Params: {}
-2025-12-26 21:45:39 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{}}
-2025-12-26 21:45:39 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
-2025-12-26 21:45:39 [info]: Request: skip=0, limit=20
-2025-12-26 21:45:39 [info]: Have 0 series, need 20, fetching page 1
-2025-12-26 21:45:39 [info]: Fetching HentaiMama catalog page 1 (sort: popular)
-2025-12-26 21:45:39 [info]: → Fetching URL: https://hentaimama.io/hentai-series/?filter=rating
-2025-12-26 21:45:39 [info]: [HentaiSea] Fetching trending page 1: https://hentaisea.com/trending/page/1/
-2025-12-26 21:45:39 [info]: [HentaiTV] Fetching catalog from search page 1: https://hentai.tv/?s=
-2025-12-26 21:45:40 [info]: Found 30 elements with selector: article
-2025-12-26 21:45:40 [info]: [HentaiMama] Batch fetching metadata for 30 series...
-2025-12-26 21:45:40 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
-2025-12-26 21:45:41 [info]: [HentaiTV] Found 19 unique series with view counts from search page 1
-2025-12-26 21:45:41 [info]: [HentaiTV] Batch fetching metadata via WordPress API for 19 items...
-2025-12-26 21:45:41 [error]: [HttpClient] Batch request failed: Unexpected token '�', "����W��~"... is not valid JSON
-2025-12-26 21:45:41 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
-2025-12-26 21:45:41 [info]: [HentaiTV] WordPress API batch fetch completed in 698ms
-2025-12-26 21:45:41 [info]: [HentaiTV] Enriched 19/19 items with metadata
-2025-12-26 21:45:42 [info]: [HentaiSea] Batch fetching metadata for 20 trending items...
-2025-12-26 21:45:43 [error]: [HttpClient] Batch request failed: Unexpected token '�', "����W��~"... is not valid JSON
-2025-12-26 21:45:43 [info]: [HentaiMama] Batch fetch completed in 3093ms
-2025-12-26 21:45:43 [info]: [HentaiMama] Enriched 0/30 series with metadata
-2025-12-26 21:45:43 [info]: Found 30 series (0 with full metadata)
-2025-12-26 21:45:44 [info]: [HentaiSea] Batch fetch completed in 1399ms
-2025-12-26 21:45:47 [info]: [HentaiSea] Enriched 20/20 items with metadata
-2025-12-26 21:45:47 [info]: [HentaiSea] Items with genres: 20/30
-2025-12-26 21:45:47 [info]: [HentaiSea] Trending complete: 30 items (page 1)
-2025-12-26 21:45:47 [info]: Aggregating catalogs from 3 providers
-2025-12-26 21:45:47 [info]: Processing 30 series from HentaiMama
-2025-12-26 21:45:48 [info]: Processing 30 series from HentaiSea
-2025-12-26 21:45:48 [info]: Processing 19 series from HentaiTV
-2025-12-26 21:45:48 [info]: 📊 Aggregation stats:
-2025-12-26 21:45:48 [info]:   HentaiMama: 30 total → 30 added, 0 merged
-2025-12-26 21:45:48 [info]:   HentaiSea: 30 total → 30 added, 0 merged
-2025-12-26 21:45:48 [info]:   HentaiTV: 19 total → 19 added, 0 merged
-2025-12-26 21:45:48 [info]: 📊 Final ID prefixes: {"hse":30,"hmm":30,"htv":19}
-2025-12-26 21:45:48 [info]: Catalog aggregation complete: 79 unique series from 3 providers (1108ms)
-2025-12-26 21:45:48 [info]: Page 1: 79 total items from providers → 79 after aggregation → 79 NEW unique + 0 merged with existing
-2025-12-26 21:45:48 [info]: 📤 Returning 20 items (total cached: 79, filtered: 79)
-2025-12-26 21:45:54 [info]: 📥 GET /catalog/hentai/hentai-top-rated/skip=20.json | Query: {} | Params: {}
-2025-12-26 21:45:54 [info]: Catalog with extra: type=hentai, id=hentai-top-rated, extraArgs=skip=20, extra={"skip":"20"}
-2025-12-26 21:45:54 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{"skip":"20"}}
-2025-12-26 21:45:54 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
-2025-12-26 21:45:54 [info]: Request: skip=20, limit=20
-2025-12-26 21:45:54 [info]: 📤 Returning 20 items (total cached: 79, filtered: 79)
-2025-12-26 21:45:56 [info]: 📥 GET /catalog/hentai/hentai-top-rated/skip=40.json | Query: {} | Params: {}
-2025-12-26 21:45:56 [info]: Catalog with extra: type=hentai, id=hentai-top-rated, extraArgs=skip=40, extra={"skip":"40"}
-2025-12-26 21:45:56 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{"skip":"40"}}
-2025-12-26 21:45:56 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
-2025-12-26 21:45:56 [info]: Request: skip=40, limit=20
-2025-12-26 21:45:56 [info]: 📤 Returning 20 items (total cached: 79, filtered: 79)
-2025-12-26 21:45:57 [info]: 📥 GET /catalog/hentai/hentai-top-rated/skip=60.json | Query: {} | Params: {}
-2025-12-26 21:45:57 [info]: Catalog with extra: type=hentai, id=hentai-top-rated, extraArgs=skip=60, extra={"skip":"60"}
-2025-12-26 21:45:57 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{"skip":"60"}}
-2025-12-26 21:45:57 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
-2025-12-26 21:45:57 [info]: Request: skip=60, limit=20
-2025-12-26 21:45:57 [info]: Have 79 series, need 80, fetching page 2
-2025-12-26 21:45:57 [info]: Fetching HentaiMama catalog page 2 (sort: popular)
-2025-12-26 21:45:57 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/2/?filter=rating
-2025-12-26 21:45:57 [info]: [HentaiSea] Fetching trending page 2: https://hentaisea.com/trending/page/2/
-2025-12-26 21:45:57 [info]: [HentaiTV] Fetching catalog from search page 2: https://hentai.tv/page/2/?s=
-2025-12-26 21:45:58 [info]: Found 30 elements with selector: article
-2025-12-26 21:45:58 [info]: [HentaiMama] Batch fetching metadata for 30 series...
-2025-12-26 21:45:58 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
-2025-12-26 21:45:58 [info]: [HentaiSea] Batch fetching metadata for 20 trending items...
-2025-12-26 21:45:59 [info]: [HentaiTV] Found 21 unique series with view counts from search page 2
-2025-12-26 21:45:59 [info]: [HentaiTV] Batch fetching metadata via WordPress API for 20 items...
-2025-12-26 21:46:00 [info]: 🔄 Performing initial self-ping...
-2025-12-26 21:46:00 [error]: [HttpClient] Batch request failed: Unexpected token '�', "���ڛ��"... is not valid JSON
-2025-12-26 21:46:00 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
-2025-12-26 21:46:01 [info]: [HentaiSea] Batch fetch completed in 2693ms
-2025-12-26 21:46:04 [info]: [HentaiSea] Enriched 20/20 items with metadata
-2025-12-26 21:46:04 [info]: [HentaiSea] Items with genres: 20/30
-2025-12-26 21:46:04 [info]: [HentaiSea] Trending complete: 30 items (page 2)
-2025-12-26 21:46:05 [error]: [HttpClient] Batch request failed: Unexpected token '�', "���~�V}�"... is not valid JSON
-2025-12-26 21:46:05 [info]: [HentaiMama] Batch fetch completed in 6801ms
-2025-12-26 21:46:05 [info]: [HentaiMama] Enriched 0/30 series with metadata
-2025-12-26 21:46:05 [info]: Found 30 series (0 with full metadata)
-2025-12-26 21:46:05 [info]: [HentaiTV] WordPress API batch fetch completed in 5204ms
-2025-12-26 21:46:05 [info]: [HentaiTV] Enriched 20/20 items with metadata
-2025-12-26 21:46:05 [info]: Aggregating catalogs from 3 providers
-2025-12-26 21:46:05 [info]: Processing 30 series from HentaiMama
-2025-12-26 21:46:05 [info]: Processing 30 series from HentaiSea
-2025-12-26 21:46:05 [info]: Processing 21 series from HentaiTV
-2025-12-26 21:46:05 [info]: 📊 Aggregation stats:
-2025-12-26 21:46:05 [info]:   HentaiMama: 30 total → 30 added, 0 merged
-2025-12-26 21:46:05 [info]:   HentaiSea: 30 total → 30 added, 0 merged
-2025-12-26 21:46:05 [info]:   HentaiTV: 21 total → 21 added, 0 merged
-2025-12-26 21:46:05 [info]: 📊 Final ID prefixes: {"hse":30,"hmm":30,"htv":21}
-2025-12-26 21:46:05 [info]: Catalog aggregation complete: 81 unique series from 3 providers (406ms)
-2025-12-26 21:46:06 [info]: Page 2: 81 total items from providers → 81 after aggregation → 70 NEW unique + 11 merged with existing
-2025-12-26 21:46:06 [info]: 📤 Returning 20 items (total cached: 149, filtered: 149)
+2025-12-27 00:39:47 [info]: [HentaiSea] Batch fetch completed in 1390ms
+2025-12-27 00:39:51 [info]: [HentaiSea] Enriched 20/20 items with metadata
+2025-12-27 00:39:51 [info]: [HentaiSea] Items with genres: 20/30
+2025-12-27 00:39:51 [info]: [HentaiSea] Trending complete: 30 items (page 1)
+2025-12-27 00:39:51 [info]: 📥 GET / | Query: {} | Params: {}
+2025-12-27 00:39:52 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 00:39:52 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 00:39:52 [info]: 📥 GET /configure | Query: {} | Params: {}
+2025-12-27 00:39:52 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 00:39:52 [info]: [HentaiMama] Batch fetch completed in 9297ms
+2025-12-27 00:40:01 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 00:40:01 [info]: Found 30 series (30 with full metadata)
+2025-12-27 00:40:02 [info]: ✅ Cache warmup complete: 3/3 providers ready
+2025-12-27 00:40:02 [info]: 📊 Cache stats: {"memorySize":3,"pendingRefreshes":0,"diskEnabled":true,"staleWhileRevalidate":true}
+2025-12-27 00:40:37 [info]: 🔄 Performing initial self-ping...
+==> Detected service running on port 10000
+==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2025-12-27 00:53:37 [info]: 📥 GET /health | Query: {} | Params: {}
+2025-12-27 00:53:37 [info]: ✅ Self-ping successful (200) - 53ms
+2025-12-27 01:07:37 [info]: 📥 GET /health | Query: {} | Params: {}
+2025-12-27 01:07:37 [info]: ✅ Self-ping successful (200) - 42ms
+2025-12-27 01:10:53 [info]: 📥 GET /manifest.json | Query: {} | Params: {}
+2025-12-27 01:10:53 [info]: Serving manifest (10719 bytes)
+2025-12-27 01:10:57 [info]: 📥 GET /catalog/hentai/hentai-top-rated.json | Query: {} | Params: {}
+2025-12-27 01:10:57 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{}}
+2025-12-27 01:10:57 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
+2025-12-27 01:10:57 [info]: Request: skip=0, limit=20
+2025-12-27 01:10:57 [info]: Have 0 series, need 20, fetching page 1
+2025-12-27 01:10:57 [info]: Fetching HentaiMama catalog page 1 (sort: popular)
+2025-12-27 01:10:57 [info]: → Fetching URL: https://hentaimama.io/hentai-series/?filter=rating
+2025-12-27 01:10:57 [info]: [HentaiSea] Fetching trending page 1: https://hentaisea.com/trending/page/1/
+2025-12-27 01:10:57 [info]: [HentaiTV] Fetching catalog from search page 1: https://hentai.tv/?s=
+2025-12-27 01:10:58 [info]: Found 30 elements with selector: article
+2025-12-27 01:10:58 [info]: [HentaiMama] Batch fetching metadata for 30 series...
+2025-12-27 01:10:59 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 01:10:59 [info]: [HentaiSea] Batch fetching metadata for 20 trending items...
+2025-12-27 01:11:01 [info]: [HentaiTV] Found 19 unique series with view counts from search page 1
+2025-12-27 01:11:01 [info]: [HentaiTV] Batch fetching metadata via WordPress API for 19 items...
+2025-12-27 01:11:02 [info]: [HentaiSea] Batch fetch completed in 2198ms
+2025-12-27 01:11:06 [info]: [HentaiSea] Enriched 20/20 items with metadata
+2025-12-27 01:11:06 [info]: [HentaiSea] Items with genres: 20/30
+2025-12-27 01:11:06 [info]: [HentaiSea] Trending complete: 30 items (page 1)
+2025-12-27 01:11:06 [info]: [HentaiTV] WordPress API batch fetch completed in 5207ms
+2025-12-27 01:11:06 [info]: [HentaiTV] Enriched 19/19 items with metadata
+2025-12-27 01:11:07 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 01:11:07 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 01:11:07 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 01:11:07 [info]: [HentaiMama] Batch fetch completed in 8793ms
+2025-12-27 01:11:16 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 01:11:16 [info]: Found 30 series (30 with full metadata)
+2025-12-27 01:11:16 [info]: Aggregating catalogs from 3 providers
+2025-12-27 01:11:16 [info]: Processing 30 series from HentaiMama
+2025-12-27 01:11:17 [info]: Processing 30 series from HentaiSea
+2025-12-27 01:11:17 [info]: Processing 19 series from HentaiTV
+2025-12-27 01:11:17 [info]: 📊 Aggregation stats:
+2025-12-27 01:11:17 [info]:   HentaiMama: 30 total → 30 added, 0 merged
+2025-12-27 01:11:17 [info]:   HentaiSea: 30 total → 30 added, 0 merged
+2025-12-27 01:11:17 [info]:   HentaiTV: 19 total → 19 added, 0 merged
+2025-12-27 01:11:17 [info]: 📊 Final ID prefixes: {"hmm":30,"hse":30,"htv":19}
+2025-12-27 01:11:17 [info]: Catalog aggregation complete: 79 unique series from 3 providers (847ms)
+2025-12-27 01:11:17 [info]: Page 1: 79 total items from providers → 79 after aggregation → 79 NEW unique + 0 merged with existing
+2025-12-27 01:11:17 [info]: 📤 Returning 20 items (total cached: 79, filtered: 79)
+2025-12-27 01:11:21 [info]: 📥 GET /meta/series/hmm-uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai.json | Query: {} | Params: {}
+2025-12-27 01:11:21 [info]: Meta request: hmm-uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai {"type":"series"}
+2025-12-27 01:11:21 [info]: Fetching series page to find episodes: https://hentaimama.io/tvshows/uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai/
+2025-12-27 01:11:22 [info]: Found first episode slug from series page: uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai-episode-2
+2025-12-27 01:11:22 [info]: Fetching HentaiMama episode metadata for uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai-episode-2
+2025-12-27 01:11:22 [info]: Fetching series cover from: https://hentaimama.io/tvshows/uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai/
+2025-12-27 01:11:23 [info]: Found series cover art from linked page
+2025-12-27 01:11:23 [info]: Found actual series slug from episode page: uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai
+2025-12-27 01:11:23 [info]: Found proper title from series page: Uchi no Otouto Maji de Dekain Dakedo Mi ni Konai
+2025-12-27 01:11:23 [info]: Found proper description from series page: Even though hes young and quite small, he is HUGE ...
+2025-12-27 01:11:23 [info]: Found release year from series page: 2021
+2025-12-27 01:11:23 [info]: Found studio from series page: Bunnywalker
+2025-12-27 01:11:23 [info]: Discovering episodes for series: uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai
+2025-12-27 01:11:24 [info]: Found 2 episodes on series page
+2025-12-27 01:11:24 [info]: Found 2 episodes for uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai
+2025-12-27 01:11:24 [info]: Meta data for Uchi no Otouto Maji de Dekain Dakedo Mi ni Konai: studio="Bunnywalker", genres=Femdom, Gyaru, Harem, Horny Slut,

@@ -99,6 +99,30 @@ function setupSelfPing() {
   }, 60000);
 }
 
+// Admin endpoint to clear all caches (use after deploying fixes)
+app.post('/admin/cache/clear', async (req, res) => {
+  try {
+    await cache.flushAll();
+    logger.info('[Admin] All caches cleared via API');
+    res.json({ success: true, message: 'All caches cleared (memory + disk)' });
+  } catch (error) {
+    logger.error(`[Admin] Cache clear failed: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Also allow GET for easy browser access
+app.get('/admin/cache/clear', async (req, res) => {
+  try {
+    await cache.flushAll();
+    logger.info('[Admin] All caches cleared via API');
+    res.json({ success: true, message: 'All caches cleared (memory + disk)' });
+  } catch (error) {
+    logger.error(`[Admin] Cache clear failed: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // API endpoint for configuration options (full lists)
 app.get('/api/options', (req, res) => {
   res.json({
