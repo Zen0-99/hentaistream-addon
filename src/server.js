@@ -342,7 +342,7 @@ app.get('/landing', (req, res) => {
 <body>
   <h1>🔞 ${config.addon.name}</h1>
   <div class="warning">
-    <strong>⚠️ Adult Content Warning:</strong> This addon provides access to adult content (18+). By installing, you confirm you are of legal age.
+    <strong>Adult Content Warning:</strong> This addon provides access to adult content (18+). By installing, you confirm you are of legal age.
   </div>
   <p><strong>Version:</strong> ${config.addon.version}</p>
   <p><strong>Status:</strong> Running</p>

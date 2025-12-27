@@ -2,238 +2,374 @@
 ==> 
 ==> ///////////////////////////////////////////////////////////
 ==> 
-2025-12-27 01:45:11 [info]: Found 101 genres
-2025-12-27 01:45:11 [info]: Manifest loaded with 10 catalogs
-2025-12-27 01:45:11 [info]: 📥 HEAD / | Query: {} | Params: {}
 ==> Available at your primary URL https://hentaistream-addon.onrender.com
 ==> 
 ==> ///////////////////////////////////////////////////////////
-2025-12-27 01:45:14 [info]: 📥 GET / | Query: {} | Params: {}
-2025-12-27 01:45:14 [info]: 📥 GET /configure | Query: {} | Params: {}
-2025-12-27 01:45:15 [info]: 🔥 Pre-warming catalog cache in background...
-2025-12-27 01:45:15 [info]: Fetching HentaiMama catalog page 1 (sort: popular)
-2025-12-27 01:45:15 [info]: → Fetching URL: https://hentaimama.io/hentai-series/?filter=rating
-2025-12-27 01:45:15 [info]: [HentaiSea] Fetching trending page 1: https://hentaisea.com/trending/page/1/
-2025-12-27 01:45:15 [info]: [HentaiTV] Fetching catalog from search page 1: https://hentai.tv/?s=
-2025-12-27 01:45:15 [info]: 📥 GET /admin/cache/clear | Query: {} | Params: {}
-2025-12-27 01:45:15 [info]: LRU cache flushed
-2025-12-27 01:45:15 [info]: All cache flushed (memory + disk)
-2025-12-27 01:45:15 [info]: [Admin] All caches cleared via API
-2025-12-27 01:45:16 [info]: Found 30 elements with selector: article
-2025-12-27 01:45:16 [info]: [HentaiMama] Batch fetching metadata for 30 series...
-2025-12-27 01:45:16 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
-2025-12-27 01:45:17 [info]: [HentaiTV] Found 19 unique series with view counts from search page 1
-2025-12-27 01:45:17 [info]: [HentaiTV] Batch fetching metadata via WordPress API for 19 items...
-2025-12-27 01:45:18 [info]: [HentaiSea] Batch fetching metadata for 20 trending items...
-2025-12-27 01:45:19 [info]: [HentaiTV] WordPress API batch fetch completed in 1991ms
-2025-12-27 01:45:19 [info]: [HentaiTV] Enriched 19/19 items with metadata
-2025-12-27 01:45:20 [info]: [HttpClient] Batch complete: 15/15 successful
-2025-12-27 01:45:20 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
-2025-12-27 01:45:20 [info]: [HentaiSea] Batch fetch completed in 2197ms
-2025-12-27 01:45:24 [info]: [HentaiSea] Enriched 20/20 items with metadata
-2025-12-27 01:45:24 [info]: [HentaiSea] Items with genres: 20/30
-2025-12-27 01:45:24 [info]: [HentaiSea] Trending complete: 30 items (page 1)
-2025-12-27 01:45:24 [info]: [HttpClient] Batch complete: 15/15 successful
-2025-12-27 01:45:24 [info]: [HentaiMama] Batch fetch completed in 8393ms
-2025-12-27 01:45:34 [info]: [HentaiMama] Enriched 30/30 series with metadata
-2025-12-27 01:45:34 [info]: Found 30 series (30 with full metadata)
-2025-12-27 01:45:34 [info]: ✅ Cache warmup complete: 3/3 providers ready
-2025-12-27 01:45:34 [info]: 📊 Cache stats: {"memorySize":3,"pendingRefreshes":0,"diskEnabled":true,"staleWhileRevalidate":true}
-2025-12-27 01:45:34 [info]: 📥 GET /admin/cache/clear | Query: {} | Params: {}
-2025-12-27 01:45:34 [info]: LRU cache flushed
-2025-12-27 01:45:34 [info]: All cache flushed (memory + disk)
-2025-12-27 01:45:34 [info]: [Admin] All caches cleared via API
-2025-12-27 01:45:54 [info]: 📥 GET /manifest.json | Query: {} | Params: {}
-2025-12-27 01:45:54 [info]: Serving manifest (10719 bytes)
-2025-12-27 01:45:58 [info]: 📥 GET /catalog/hentai/hentai-top-rated.json | Query: {} | Params: {}
-2025-12-27 01:45:58 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{}}
-2025-12-27 01:45:58 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
-2025-12-27 01:45:58 [info]: Request: skip=0, limit=20
-2025-12-27 01:45:58 [info]: Have 0 series, need 20, fetching page 1
-2025-12-27 01:45:58 [info]: Fetching HentaiMama catalog page 1 (sort: popular)
-2025-12-27 01:45:58 [info]: → Fetching URL: https://hentaimama.io/hentai-series/?filter=rating
-2025-12-27 01:45:58 [info]: [HentaiSea] Fetching trending page 1: https://hentaisea.com/trending/page/1/
-2025-12-27 01:45:58 [info]: [HentaiTV] Fetching catalog from search page 1: https://hentai.tv/?s=
-2025-12-27 01:45:58 [info]: Found 30 elements with selector: article
-2025-12-27 01:45:58 [info]: [HentaiMama] Batch fetching metadata for 30 series...
-2025-12-27 01:45:58 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
-2025-12-27 01:45:59 [info]: [HentaiTV] Found 19 unique series with view counts from search page 1
-2025-12-27 01:45:59 [info]: [HentaiTV] Batch fetching metadata via WordPress API for 19 items...
-2025-12-27 01:46:00 [info]: [HentaiSea] Batch fetching metadata for 20 trending items...
-2025-12-27 01:46:00 [info]: [HentaiTV] WordPress API batch fetch completed in 1604ms
-2025-12-27 01:46:00 [info]: [HentaiTV] Enriched 19/19 items with metadata
-2025-12-27 01:46:01 [info]: [HentaiSea] Batch fetch completed in 1200ms
-2025-12-27 01:46:04 [info]: [HentaiSea] Enriched 20/20 items with metadata
-2025-12-27 01:46:04 [info]: [HentaiSea] Items with genres: 20/30
-2025-12-27 01:46:04 [info]: [HentaiSea] Trending complete: 30 items (page 1)
-2025-12-27 01:46:05 [info]: [HttpClient] Batch complete: 15/15 successful
-2025-12-27 01:46:05 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
-2025-12-27 01:46:05 [info]: [HttpClient] Batch complete: 15/15 successful
-2025-12-27 01:46:05 [info]: [HentaiMama] Batch fetch completed in 6990ms
-2025-12-27 01:46:14 [info]: [HentaiMama] Enriched 30/30 series with metadata
-2025-12-27 01:46:14 [info]: Found 30 series (30 with full metadata)
-2025-12-27 01:46:14 [info]: Aggregating catalogs from 3 providers
-2025-12-27 01:46:14 [info]: Processing 30 series from HentaiMama
-2025-12-27 01:46:14 [info]: Processing 30 series from HentaiSea
-2025-12-27 01:46:15 [info]: Processing 19 series from HentaiTV
-2025-12-27 01:46:15 [info]: 📊 Aggregation stats:
-2025-12-27 01:46:15 [info]:   HentaiMama: 30 total → 30 added, 0 merged
-2025-12-27 01:46:15 [info]:   HentaiSea: 30 total → 30 added, 0 merged
-2025-12-27 01:46:15 [info]:   HentaiTV: 19 total → 19 added, 0 merged
-2025-12-27 01:46:15 [info]: 📊 Final ID prefixes: {"hmm":30,"hse":30,"htv":19}
-2025-12-27 01:46:15 [info]: Catalog aggregation complete: 79 unique series from 3 providers (697ms)
-2025-12-27 01:46:15 [info]: Page 1: 79 total items from providers → 79 after aggregation → 79 NEW unique + 0 merged with existing
-2025-12-27 01:46:15 [info]: 🔄 Performing initial self-ping...
-2025-12-27 01:46:15 [info]: 📤 Returning 20 items (total cached: 79, filtered: 79)
-2025-12-27 01:46:17 [info]: 📥 GET /meta/series/hmm-gishi-wa-yan-mama-junyuu-chuu.json | Query: {} | Params: {}
-2025-12-27 01:46:17 [info]: Meta request: hmm-gishi-wa-yan-mama-junyuu-chuu {"type":"series"}
-2025-12-27 01:46:17 [info]: Fetching series page to find episodes: https://hentaimama.io/tvshows/gishi-wa-yan-mama-junyuu-chuu/
-2025-12-27 01:46:17 [info]: Found first episode slug from series page: gishi-wa-yan-mama-junyuu-chuu-episode-2
-2025-12-27 01:46:17 [info]: Fetching HentaiMama episode metadata for gishi-wa-yan-mama-junyuu-chuu-episode-2
-2025-12-27 01:46:18 [info]: Fetching series cover from: https://hentaimama.io/tvshows/gishi-wa-yan-mama-junyuu-chuu/
-2025-12-27 01:46:18 [info]: Found series cover art from linked page
-2025-12-27 01:46:18 [info]: Found actual series slug from episode page: gishi-wa-yan-mama-junyuu-chuu
-2025-12-27 01:46:19 [info]: Found proper title from series page: Gishi wa Yan Mama Junyuu Chuu
-2025-12-27 01:46:19 [info]: Found proper description from series page: Aika became fleshy as a mother. Takuya Sano secret...
-2025-12-27 01:46:19 [info]: Found release year from series page: 2020
-2025-12-27 01:46:19 [info]: Found studio from series page: Bunnywalker
-2025-12-27 01:46:19 [info]: Discovering episodes for series: gishi-wa-yan-mama-junyuu-chuu
-2025-12-27 01:46:19 [info]: Found 2 episodes on series page
-2025-12-27 01:46:19 [info]: Found 2 episodes for gishi-wa-yan-mama-junyuu-chuu
-2025-12-27 01:46:19 [info]: Meta data for Gishi wa Yan Mama Junyuu Chuu: studio="Bunnywalker", genres=Blowjob, Internal Cumshot, Lactation, Large Breasts, MILF, NTR, Step Sister, X-Ray
-2025-12-27 01:46:20 [info]: 📥 GET /meta/series/hmm-imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii.json | Query: {} | Params: {}
-2025-12-27 01:46:20 [info]: Meta request: hmm-imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii {"type":"series"}
-2025-12-27 01:46:20 [info]: Fetching series page to find episodes: https://hentaimama.io/tvshows/imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii/
-2025-12-27 01:46:20 [info]: Found first episode slug from series page: imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii-episode-4
-2025-12-27 01:46:20 [info]: Fetching HentaiMama episode metadata for imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii-episode-4
-2025-12-27 01:46:21 [info]: Fetching series cover from: https://hentaimama.io/tvshows/imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii/
-2025-12-27 01:46:21 [info]: Found series cover art from linked page
-2025-12-27 01:46:21 [info]: Found actual series slug from episode page: imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii
-2025-12-27 01:46:21 [info]: Found proper title from series page: Imaizumin-chi wa Douyara Gal no Tamariba ni Natteru Rashii
-2025-12-27 01:46:21 [info]: Found proper description from series page: His house somehow ended up as the hangout spot for...
-2025-12-27 01:46:21 [info]: Found release year from series page: 2021
-2025-12-27 01:46:21 [info]: Found studio from series page: Bunnywalker
-2025-12-27 01:46:21 [info]: Discovering episodes for series: imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii
-2025-12-27 01:46:22 [info]: Found 4 episodes on series page
-2025-12-27 01:46:22 [info]: Found 4 episodes for imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii
-2025-12-27 01:46:22 [info]: Meta data for Imaizumin-chi wa Douyara Gal no Tamariba ni Natteru Rashii: studio="Bunnywalker", genres=Femdom, Gyaru, Harem, Rim job, School Girls, X-Ray
-2025-12-27 01:46:24 [info]: 📥 GET /meta/series/hmm-kaede-suzu-animation.json | Query: {} | Params: {}
-2025-12-27 01:46:24 [info]: Meta request: hmm-kaede-suzu-animation {"type":"series"}
-2025-12-27 01:46:24 [info]: Fetching series page to find episodes: https://hentaimama.io/tvshows/kaede-suzu-animation/
-2025-12-27 01:46:24 [info]: Found first episode slug from series page: kaede-suzu-animation-episode-3
-2025-12-27 01:46:24 [info]: Fetching HentaiMama episode metadata for kaede-suzu-animation-episode-3
-2025-12-27 01:46:25 [info]: Fetching series cover from: https://hentaimama.io/tvshows/kaede-suzu-animation/
-2025-12-27 01:46:25 [info]: Found series cover art from linked page
-2025-12-27 01:46:25 [info]: Found actual series slug from episode page: kaede-suzu-animation
-2025-12-27 01:46:25 [info]: Found proper title from series page: Kaede to Suzu The Animation
-2025-12-27 01:46:25 [info]: Found proper description from series page: What could possibly be better than a cute girl wil...
-2025-12-27 01:46:25 [info]: Found release year from series page: 2022
-2025-12-27 01:46:26 [info]: Found studio from series page: Pink Pineapple
-2025-12-27 01:46:26 [info]: Discovering episodes for series: kaede-suzu-animation
-2025-12-27 01:46:26 [info]: Found 3 episodes on series page
-2025-12-27 01:46:26 [info]: Found 3 episodes for kaede-suzu-animation
-2025-12-27 01:46:26 [info]: Meta data for Kaede to Suzu The Animation: studio="Pink Pineapple", genres=Cosplay, DeepThroat, Harem, Maid, Public Sex, School Girls, Three some, Vanilla
-2025-12-27 01:46:59 [info]: 📥 GET /meta/series/hmm-kaede-suzu-animation.json | Query: {} | Params: {}
-2025-12-27 01:46:59 [info]: Meta request: hmm-kaede-suzu-animation {"type":"series"}
-2025-12-27 01:47:05 [info]: 📥 GET /stream/series/hmm-kaede-suzu-animation-episode-2%3A1%3A2.json | Query: {} | Params: {}
-2025-12-27 01:47:05 [info]: Stream request: hmm-kaede-suzu-animation-episode-2:1:2 {"type":"series"}
-2025-12-27 01:47:05 [info]: Extracting streams from all providers for: hmm-kaede-suzu-animation-episode-2
-2025-12-27 01:47:05 [info]: Trying slug variations: kaede-suzu-animation-episode-2, kaede-suzu-animation-2...
-2025-12-27 01:47:05 [info]: Fetching HentaiMama streams for kaede-suzu-animation-episode-2
-2025-12-27 01:47:05 [info]: [HentaiSea] Fetching streams: https://hentaisea.com/episodes/kaede-suzu-animation-episode-2/
-2025-12-27 01:47:05 [info]: [HentaiTV] Fetching streams for: kaede-suzu-animation-episode-2
-2025-12-27 01:47:05 [info]: [HentaiTV] Slug registry MISS, querying WordPress API for: kaede-suzu-animation
-2025-12-27 01:47:05 [info]: Making AJAX call: action=get_player_contents, a=11521
-2025-12-27 01:47:06 [error]: [HentaiSea] HTTP error 404: {"0":"N","1":"o","2":"t","3":" ","4":"F","5":"o","6":"u","7":"n","8":"d"}
-2025-12-27 01:47:06 [error]: [HentaiSea] Stream error: Request failed with status code 404
-2025-12-27 01:47:06 [info]: [HentaiSea] Fetching streams: https://hentaisea.com/episodes/kaede-suzu-animation-2/
-2025-12-27 01:47:06 [info]: Got 3 player iframes
-2025-12-27 01:47:06 [info]: Fetching iframe: https://hentaimama.io/new2.php?p=Sy9rYWVkZS1zdXp1LWFuaW1hdGlvbi0yLm1wNA==
-2025-12-27 01:47:06 [info]: Found 1 sources in iframe
-2025-12-27 01:47:06 [info]: Found 1 streams for kaede-suzu-animation-episode-2
-2025-12-27 01:47:06 [info]: [HentaiMama] Found streams with slug: kaede-suzu-animation-episode-2
-2025-12-27 01:47:06 [error]: [HentaiSea] HTTP error 404: {"0":"N","1":"o","2":"t","3":" ","4":"F","5":"o","6":"u","7":"n","8":"d"}
-2025-12-27 01:47:06 [error]: [HentaiSea] Stream error: Request failed with status code 404
-2025-12-27 01:47:06 [error]: [HentaiTV] Stream error: Request failed with status code 404
-2025-12-27 01:47:06 [info]: Found 1 streams from HentaiMama
-2025-12-27 01:47:06 [info]: [HentaiSea] Trying search fallback with terms: kaede, kaede suzu
-2025-12-27 01:47:06 [info]: [HentaiSea] Searching: kaede
-2025-12-27 01:47:06 [info]: [HentaiSea] Found 14 search results
-2025-12-27 01:47:06 [info]: [HentaiSea] "kaede": 2/14 results match
-2025-12-27 01:47:06 [info]: [HentaiSea] Fetching streams: https://hentaisea.com/episodes/kaede-to-suzu-the-animation-episode-2/
-2025-12-27 01:47:08 [info]: [HentaiSea] Trying dooplay_player AJAX: post=44995, nume=1
-2025-12-27 01:47:08 [info]: [HentaiSea] Got HTML iframe response
-2025-12-27 01:47:08 [info]: [HentaiSea] Found jwplayer URL: https://hentaisea.com/jwplayer/?source=https%3A%2F%2Fpornobuono.com%2Fmp4%2Frele...
-2025-12-27 01:47:08 [info]: [HentaiSea] Found 1 streams
-2025-12-27 01:47:08 [info]: [HentaiSea] Found 1 streams via search for: kaede-to-suzu-the-animation
-2025-12-27 01:47:08 [info]: [HentaiTV] Trying search fallback for: "kaede suzu"
-2025-12-27 01:47:08 [info]: [HentaiTV] Fetching streams for: kaede-to-suzu-the-animation-episode-2
-2025-12-27 01:47:08 [info]: [HentaiTV] Slug registry MISS, querying WordPress API for: kaede-to-suzu
-2025-12-27 01:47:08 [info]: [HentaiTV] WordPress API found: kaede-to-suzu-the-animation-episode-2
-2025-12-27 01:47:09 [warn]: [HentaiTV] Hit interstitial page for kaede-to-suzu-the-animation-episode-2
-2025-12-27 01:47:09 [info]: [HentaiTV] Trying direct URL: https://r2.1hanime.com/kaede-to-suzu-the-animation-2.mp4
-2025-12-27 01:47:09 [warn]: [HentaiTV] Could not get streams for kaede-to-suzu-the-animation-episode-2
-2025-12-27 01:47:09 [info]: [HentaiTV] Found 0 streams
-2025-12-27 01:47:09 [info]: Stream: HentaiMama | Episode 2 -> https://gdvid.info/K/kaede-suzu-animation-2.mp4...
-2025-12-27 01:47:09 [info]: Stream: HentaiSea | Episode 2 -> PROXIED (jwplayer) via https://hentaistream-addon.onrender.com
-2025-12-27 01:47:09 [info]: Returning 2 total streams for hmm-kaede-suzu-animation-episode-2:1:2
-2025-12-27 01:47:16 [info]: 📥 GET /stream/series/hmm-kaede-suzu-animation-episode-2%3A1%3A2.json | Query: {} | Params: {}
-2025-12-27 01:47:16 [info]: Stream request: hmm-kaede-suzu-animation-episode-2:1:2 {"type":"series"}
-2025-12-27 01:47:22 [info]: 📥 GET /stream/series/hmm-kaede-suzu-animation-episode-3%3A1%3A3.json | Query: {} | Params: {}
-2025-12-27 01:47:22 [info]: Stream request: hmm-kaede-suzu-animation-episode-3:1:3 {"type":"series"}
-2025-12-27 01:47:22 [info]: Extracting streams from all providers for: hmm-kaede-suzu-animation-episode-3
-2025-12-27 01:47:22 [info]: Trying slug variations: kaede-suzu-animation-episode-3, kaede-suzu-animation-3...
-2025-12-27 01:47:22 [info]: Fetching HentaiMama streams for kaede-suzu-animation-episode-3
-2025-12-27 01:47:22 [info]: [HentaiSea] Fetching streams: https://hentaisea.com/episodes/kaede-suzu-animation-episode-3/
-2025-12-27 01:47:22 [info]: [HentaiTV] Fetching streams for: kaede-suzu-animation-episode-3
-2025-12-27 01:47:22 [info]: [HentaiTV] Slug registry MISS, querying WordPress API for: kaede-suzu-animation
-2025-12-27 01:47:22 [info]: Making AJAX call: action=get_player_contents, a=13795
-2025-12-27 01:47:22 [info]: 📥 GET /video-proxy | Query: {"jwplayer":"https://hentaisea.com/jwplayer/?source=https%3A%2F%2Fpornobuono.com%2Fmp4%2Freleases-xrw%2FWeek+75%2FKaede+to+Suzu+The+Animation%2FKaede+to+Suzu+The+Animation+-+Episode+2%2FKaede+to+Suzu+The+Animation+-+Episode+2.mp4&id=44995&type=mp4"} | Params: {}
-2025-12-27 01:47:22 [info]: Video proxy: Fetching fresh auth from jwplayer...
-2025-12-27 01:47:22 [info]: Got 2 player iframes
-2025-12-27 01:47:22 [info]: Fetching iframe: https://hentaimama.io/new2.php?p=Sy9rYWVkZS1zdXp1LWFuaW1hdGlvbi0zLm1wNA==
-2025-12-27 01:47:22 [error]: [HentaiSea] HTTP error 404: {"0":"N","1":"o","2":"t","3":" ","4":"F","5":"o","6":"u","7":"n","8":"d"}
-2025-12-27 01:47:22 [error]: [HentaiSea] Stream error: Request failed with status code 404
-2025-12-27 01:47:22 [info]: [HentaiSea] Fetching streams: https://hentaisea.com/episodes/kaede-suzu-animation-3/
-2025-12-27 01:47:22 [info]: Found 1 sources in iframe
-2025-12-27 01:47:22 [info]: Found 1 streams for kaede-suzu-animation-episode-3
-2025-12-27 01:47:22 [info]: [HentaiMama] Found streams with slug: kaede-suzu-animation-episode-3
-2025-12-27 01:47:22 [info]: Video proxy: Got fresh URL: https://pornobuono.com/mp4/releases-xrw/Week 75/Kaede to Suzu The Animation/Kaed...
-2025-12-27 01:47:22 [info]: Video proxy: Streaming from https://pornobuono.com/mp4/releases-xrw/Week 75/Kaede to Suzu The Animation/Kaed...
-2025-12-27 01:47:23 [error]: [HentaiSea] HTTP error 404: {"0":"N","1":"o","2":"t","3":" ","4":"F","5":"o","6":"u","7":"n","8":"d"}
-2025-12-27 01:47:23 [error]: [HentaiSea] Stream error: Request failed with status code 404
-2025-12-27 01:47:23 [error]: [HentaiTV] Stream error: Request failed with status code 404
-2025-12-27 01:47:23 [info]: Found 1 streams from HentaiMama
-2025-12-27 01:47:23 [info]: [HentaiSea] Trying search fallback with terms: kaede, kaede suzu
-2025-12-27 01:47:23 [info]: [HentaiSea] Searching: kaede
-2025-12-27 01:47:23 [info]: [HentaiSea] Found 14 search results
-2025-12-27 01:47:23 [info]: [HentaiSea] "kaede": 2/14 results match
-2025-12-27 01:47:23 [info]: [HentaiSea] Fetching streams: https://hentaisea.com/episodes/kaede-to-suzu-the-animation-episode-3/
-2025-12-27 01:47:23 [info]: 📥 GET /video-proxy | Query: {"jwplayer":"https://hentaisea.com/jwplayer/?source=https%3A%2F%2Fpornobuono.com%2Fmp4%2Freleases-xrw%2FWeek+75%2FKaede+to+Suzu+The+Animation%2FKaede+to+Suzu+The+Animation+-+Episode+2%2FKaede+to+Suzu+The+Animation+-+Episode+2.mp4&id=44995&type=mp4"} | Params: {}
-2025-12-27 01:47:23 [info]: Video proxy: Fetching fresh auth from jwplayer...
-2025-12-27 01:47:23 [info]: Video proxy: Got fresh URL: https://freakpornos.com/mp4/releases-xrw/Week 75/Kaede to Suzu The Animation/Kae...
-2025-12-27 01:47:23 [info]: Video proxy: Streaming from https://freakpornos.com/mp4/releases-xrw/Week 75/Kaede to Suzu The Animation/Kae...
-2025-12-27 01:47:23 [info]: 📥 HEAD /video-proxy | Query: {"jwplayer":"https://hentaisea.com/jwplayer/?source=https%3A%2F%2Fpornobuono.com%2Fmp4%2Freleases-xrw%2FWeek+75%2FKaede+to+Suzu+The+Animation%2FKaede+to+Suzu+The+Animation+-+Episode+2%2FKaede+to+Suzu+The+Animation+-+Episode+2.mp4&id=44995&type=mp4"} | Params: {}
-2025-12-27 01:47:23 [info]: Video proxy: Fetching fresh auth from jwplayer...
-2025-12-27 01:47:23 [info]: Video proxy: Got fresh URL: https://freakpornos.com/mp4/releases-xrw/Week 75/Kaede to Suzu The Animation/Kae...
-2025-12-27 01:47:23 [info]: Video proxy: Streaming from https://freakpornos.com/mp4/releases-xrw/Week 75/Kaede to Suzu The Animation/Kae...
-2025-12-27 01:47:24 [info]: 📥 GET /video-proxy | Query: {"jwplayer":"https://hentaisea.com/jwplayer/?source=https%3A%2F%2Fpornobuono.com%2Fmp4%2Freleases-xrw%2FWeek+75%2FKaede+to+Suzu+The+Animation%2FKaede+to+Suzu+The+Animation+-+Episode+2%2FKaede+to+Suzu+The+Animation+-+Episode+2.mp4&id=44995&type=mp4"} | Params: {}
-2025-12-27 01:47:24 [info]: Video proxy: Fetching fresh auth from jwplayer...
-2025-12-27 01:47:24 [info]: Video proxy: Got fresh URL: https://freakpornos.com/mp4/releases-xrw/Week 75/Kaede to Suzu The Animation/Kae...
-2025-12-27 01:47:24 [info]: Video proxy: Streaming from https://freakpornos.com/mp4/releases-xrw/Week 75/Kaede to Suzu The Animation/Kae...
-2025-12-27 01:47:24 [info]: [HentaiSea] Trying dooplay_player AJAX: post=47446, nume=1
-2025-12-27 01:47:24 [info]: [HentaiSea] Got HTML iframe response
-2025-12-27 01:47:24 [info]: [HentaiSea] Found jwplayer URL: https://hentaisea.com/jwplayer/?source=https%3A%2F%2Ffreakpornos.com%2Fmp4%2Frel...
-2025-12-27 01:47:24 [info]: [HentaiSea] Found 1 streams
-2025-12-27 01:47:24 [info]: [HentaiSea] Found 1 streams via search for: kaede-to-suzu-the-animation
-2025-12-27 01:47:24 [info]: [HentaiTV] Trying search fallback for: "kaede suzu"
-2025-12-27 01:47:24 [info]: [HentaiTV] Fetching streams for: kaede-to-suzu-the-animation-episode-3
-2025-12-27 01:47:24 [info]: [HentaiTV] Slug registry MISS, querying WordPress API for: kaede-to-suzu
-2025-12-27 01:47:25 [info]: [HentaiTV] WordPress API found: kaede-to-suzu-the-animation-episode-3
-2025-12-27 01:47:25 [warn]: [HentaiTV] Hit interstitial page for kaede-to-suzu-the-animation-episode-3
-2025-12-27 01:47:25 [info]: [HentaiTV] Trying direct URL: https://r2.1hanime.com/kaede-to-suzu-the-animation-3.mp4
-2025-12-27 01:47:25 [warn]: [HentaiTV] Could not get streams for kaede-to-suzu-the-animation-episode-3
-2025-12-27 01:47:25 [info]: [HentaiTV] Found 0 streams
-2025-12-27 01:47:25 [info]: Stream: HentaiMama | Episode 3 -> https://gdvid.info/K/kaede-suzu-animation-3.mp4...
-2025-12-27 01:47:25 [info]: Stream: HentaiSea | Episode 3 -> PROXIED (jwplayer) via https://hentaistream-addon.onrender.com
-2025-12-27 01:47:25 [info]: Returning 2 total streams for hmm-kaede-suzu-animation-episode-3:1:3
+2025-12-27 02:15:04 [info]: [HentaiSea] Enriched 20/20 items with metadata
+2025-12-27 02:15:04 [info]: [HentaiSea] Items with genres: 20/30
+2025-12-27 02:15:04 [info]: [HentaiSea] Trending complete: 30 items (page 1)
+2025-12-27 02:15:04 [info]: [HentaiTV] WordPress API batch fetch completed in 4811ms
+2025-12-27 02:15:04 [info]: [HentaiTV] Enriched 19/19 items with metadata
+2025-12-27 02:15:04 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:15:04 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:15:06 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:15:06 [info]: [HentaiMama] Batch fetch completed in 9998ms
+2025-12-27 02:15:16 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 02:15:16 [info]: Found 30 series (30 with full metadata)
+2025-12-27 02:15:16 [info]: ✅ Cache warmup complete: 3/3 providers ready
+2025-12-27 02:15:16 [info]: 📊 Cache stats: {"memorySize":3,"pendingRefreshes":0,"diskEnabled":true,"staleWhileRevalidate":true}
+2025-12-27 02:15:16 [info]: 📥 GET / | Query: {} | Params: {}
+2025-12-27 02:15:16 [info]: 📥 GET /configure | Query: {} | Params: {}
+2025-12-27 02:15:29 [info]: 📥 GET /admin/cache/clear | Query: {} | Params: {}
+2025-12-27 02:15:29 [info]: LRU cache flushed
+2025-12-27 02:15:29 [info]: All cache flushed (memory + disk)
+2025-12-27 02:15:29 [info]: [Admin] All caches cleared via API
+2025-12-27 02:15:40 [info]: 📥 GET /manifest.json | Query: {} | Params: {}
+2025-12-27 02:15:40 [info]: Serving manifest (10719 bytes)
+2025-12-27 02:15:44 [info]: 📥 GET /catalog/hentai/hentai-top-rated.json | Query: {} | Params: {}
+2025-12-27 02:15:44 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{}}
+2025-12-27 02:15:44 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
+2025-12-27 02:15:44 [info]: Request: skip=0, limit=20
+2025-12-27 02:15:44 [info]: Have 0 series, need 20, fetching page 1
+2025-12-27 02:15:44 [info]: Fetching HentaiMama catalog page 1 (sort: popular)
+2025-12-27 02:15:44 [info]: → Fetching URL: https://hentaimama.io/hentai-series/?filter=rating
+2025-12-27 02:15:44 [info]: [HentaiSea] Fetching trending page 1: https://hentaisea.com/trending/page/1/
+2025-12-27 02:15:44 [info]: [HentaiTV] Fetching catalog from search page 1: https://hentai.tv/?s=
+2025-12-27 02:15:45 [info]: Found 30 elements with selector: article
+2025-12-27 02:15:45 [info]: [HentaiMama] Batch fetching metadata for 30 series...
+2025-12-27 02:15:45 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:15:45 [info]: [HentaiTV] Found 19 unique series with view counts from search page 1
+2025-12-27 02:15:45 [info]: [HentaiTV] Batch fetching metadata via WordPress API for 19 items...
+2025-12-27 02:15:46 [info]: [HentaiTV] WordPress API batch fetch completed in 1000ms
+2025-12-27 02:15:46 [info]: [HentaiTV] Enriched 19/19 items with metadata
+2025-12-27 02:15:47 [info]: [HentaiSea] Batch fetching metadata for 20 trending items...
+2025-12-27 02:15:48 [info]: [HentaiSea] Batch fetch completed in 1297ms
+2025-12-27 02:15:51 [info]: [HentaiSea] Enriched 20/20 items with metadata
+2025-12-27 02:15:51 [info]: [HentaiSea] Items with genres: 20/30
+2025-12-27 02:15:51 [info]: [HentaiSea] Trending complete: 30 items (page 1)
+2025-12-27 02:15:51 [info]: 🔄 Performing initial self-ping...
+2025-12-27 02:15:51 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:15:51 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:15:52 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:15:52 [info]: [HentaiMama] Batch fetch completed in 6506ms
+2025-12-27 02:16:01 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 02:16:01 [info]: Found 30 series (30 with full metadata)
+2025-12-27 02:16:01 [info]: Aggregating catalogs from 3 providers
+2025-12-27 02:16:01 [info]: Processing 30 series from HentaiMama
+2025-12-27 02:16:01 [info]: Processing 30 series from HentaiSea
+2025-12-27 02:16:02 [info]: Processing 19 series from HentaiTV
+2025-12-27 02:16:02 [info]: 📊 Aggregation stats:
+2025-12-27 02:16:02 [info]:   HentaiMama: 30 total → 30 added, 0 merged
+2025-12-27 02:16:02 [info]:   HentaiSea: 30 total → 30 added, 0 merged
+2025-12-27 02:16:02 [info]:   HentaiTV: 19 total → 19 added, 0 merged
+2025-12-27 02:16:02 [info]: 📊 Final ID prefixes: {"hmm":30,"hse":30,"htv":19}
+2025-12-27 02:16:02 [info]: Catalog aggregation complete: 79 unique series from 3 providers (610ms)
+2025-12-27 02:16:02 [info]: Page 1: 79 total items from providers → 79 after aggregation → 79 NEW unique + 0 merged with existing
+2025-12-27 02:16:02 [info]: 📤 Returning 20 items (total cached: 79, filtered: 79)
+2025-12-27 02:16:05 [info]: 📥 GET /meta/series/hmm-gishi-wa-yan-mama-junyuu-chuu.json | Query: {} | Params: {}
+2025-12-27 02:16:05 [info]: Meta request: hmm-gishi-wa-yan-mama-junyuu-chuu {"type":"series"}
+2025-12-27 02:16:05 [info]: Fetching series page to find episodes: https://hentaimama.io/tvshows/gishi-wa-yan-mama-junyuu-chuu/
+2025-12-27 02:16:05 [info]: Found first episode slug from series page: gishi-wa-yan-mama-junyuu-chuu-episode-2
+2025-12-27 02:16:05 [info]: Fetching HentaiMama episode metadata for gishi-wa-yan-mama-junyuu-chuu-episode-2
+2025-12-27 02:16:05 [info]: Fetching series cover from: https://hentaimama.io/tvshows/gishi-wa-yan-mama-junyuu-chuu/
+2025-12-27 02:16:06 [info]: Found series cover art from linked page
+2025-12-27 02:16:06 [info]: Found actual series slug from episode page: gishi-wa-yan-mama-junyuu-chuu
+2025-12-27 02:16:06 [info]: Episode page has promotional description, will need series page description
+2025-12-27 02:16:06 [info]: Found proper title from series page: Gishi wa Yan Mama Junyuu Chuu
+2025-12-27 02:16:06 [info]: Found proper description from series page: Aika became fleshy as a mother. Takuya Sano secret...
+2025-12-27 02:16:06 [info]: Found release year from series page: 2020
+2025-12-27 02:16:06 [info]: Found studio from series page: Bunnywalker
+2025-12-27 02:16:06 [info]: Discovering episodes for series: gishi-wa-yan-mama-junyuu-chuu
+2025-12-27 02:16:07 [info]: Found 2 episodes on series page
+2025-12-27 02:16:07 [info]: Found 2 episodes for gishi-wa-yan-mama-junyuu-chuu
+2025-12-27 02:16:07 [info]: Meta data for Gishi wa Yan Mama Junyuu Chuu: studio="Bunnywalker", genres=Blowjob, Internal Cumshot, Lactation, Large Breasts, MILF, NTR, Step Sister, X-Ray
+2025-12-27 02:16:08 [info]: 📥 GET /catalog/hentai/hentai-top-rated/skip=20.json | Query: {} | Params: {}
+2025-12-27 02:16:08 [info]: Catalog with extra: type=hentai, id=hentai-top-rated, extraArgs=skip=20, extra={"skip":"20"}
+2025-12-27 02:16:08 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{"skip":"20"}}
+2025-12-27 02:16:08 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
+2025-12-27 02:16:08 [info]: Request: skip=20, limit=20
+2025-12-27 02:16:08 [info]: 📤 Returning 20 items (total cached: 79, filtered: 79)
+2025-12-27 02:16:11 [info]: 📥 GET /meta/series/hmm-isekai-harem-monogatari.json | Query: {} | Params: {}
+2025-12-27 02:16:11 [info]: Meta request: hmm-isekai-harem-monogatari {"type":"series"}
+2025-12-27 02:16:11 [info]: Fetching series page to find episodes: https://hentaimama.io/tvshows/isekai-harem-monogatari/
+2025-12-27 02:16:11 [info]: Found first episode slug from series page: isekai-harem-monogatari-episode-4
+2025-12-27 02:16:11 [info]: Fetching HentaiMama episode metadata for isekai-harem-monogatari-episode-4
+2025-12-27 02:16:12 [info]: Fetching series cover from: https://hentaimama.io/tvshows/isekai-harem-monogatari/
+2025-12-27 02:16:12 [info]: Found series cover art from linked page
+2025-12-27 02:16:12 [info]: Found actual series slug from episode page: isekai-harem-monogatari
+2025-12-27 02:16:12 [info]: Episode page has promotional description, will need series page description
+2025-12-27 02:16:13 [info]: Found proper title from series page: Isekai Harem Monogatari
+2025-12-27 02:16:13 [info]: Found proper description from series page: Our protanogist can’t help but masturbate 10 times...
+2025-12-27 02:16:13 [info]: Found release year from series page: 2020
+2025-12-27 02:16:13 [info]: Found studio from series page: Majin
+2025-12-27 02:16:13 [info]: Discovering episodes for series: isekai-harem-monogatari
+2025-12-27 02:16:13 [info]: Found 4 episodes on series page
+2025-12-27 02:16:13 [info]: Found 4 episodes for isekai-harem-monogatari
+2025-12-27 02:16:13 [info]: Meta data for Isekai Harem Monogatari: studio="Majin", genres=Adventure, Ahegao, Elf, Facesitting, Fantasy, Femdom, Harem, Large Breasts, Nuns, Stocking, Tits Fuck, X-Ray
+2025-12-27 02:16:15 [info]: 📥 GET /meta/series/hmm-nee-summer.json | Query: {} | Params: {}
+2025-12-27 02:16:15 [info]: Meta request: hmm-nee-summer {"type":"series"}
+2025-12-27 02:16:15 [info]: Fetching series page to find episodes: https://hentaimama.io/tvshows/nee-summer/
+2025-12-27 02:16:15 [info]: Found first episode slug from series page: nee-summer-episode-2
+2025-12-27 02:16:15 [info]: Fetching HentaiMama episode metadata for nee-summer-episode-2
+2025-12-27 02:16:16 [info]: Fetching series cover from: https://hentaimama.io/tvshows/nee-summer/
+2025-12-27 02:16:16 [info]: Found series cover art from linked page
+2025-12-27 02:16:16 [info]: Found actual series slug from episode page: nee-summer
+2025-12-27 02:16:16 [info]: Episode page has promotional description, will need series page description
+2025-12-27 02:16:17 [info]: Found proper title from series page: Nee Summer!
+2025-12-27 02:16:17 [info]: Found proper description from series page: Yuuta is a guy is in his high school senior year. ...
+2025-12-27 02:16:17 [info]: Found release year from series page: 2025
+2025-12-27 02:16:17 [info]: Found studio from series page: Mary Jane
+2025-12-27 02:16:17 [info]: Discovering episodes for series: nee-summer
+2025-12-27 02:16:17 [info]: Found 2 episodes on series page
+2025-12-27 02:16:17 [info]: Found 2 episodes for nee-summer
+2025-12-27 02:16:17 [info]: Meta data for Nee Summer!: studio="Mary Jane", genres=Large Breasts, School Girls, Step Sister, Tits Fuck
+==> Detected service running on port 10000
+==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2025-12-27 02:21:19 [info]: Found series cover art from linked page
+2025-12-27 02:21:19 [info]: Found actual series slug from episode page: kaede-suzu-animation
+2025-12-27 02:21:19 [info]: Episode page has promotional description, will need series page description
+2025-12-27 02:21:20 [info]: Found proper title from series page: Kaede to Suzu The Animation
+2025-12-27 02:21:20 [info]: Found proper description from series page: What could possibly be better than a cute girl wil...
+2025-12-27 02:21:20 [info]: Found release year from series page: 2022
+2025-12-27 02:21:20 [info]: Found studio from series page: Pink Pineapple
+2025-12-27 02:21:20 [info]: Discovering episodes for series: kaede-suzu-animation
+2025-12-27 02:21:20 [info]: Found 3 episodes on series page
+2025-12-27 02:21:20 [info]: Found 3 episodes for kaede-suzu-animation
+2025-12-27 02:21:20 [info]: Meta data for Kaede to Suzu The Animation: studio="Pink Pineapple", genres=Cosplay, DeepThroat, Harem, Maid, Public Sex, School Girls, Three some, Vanilla
+2025-12-27 02:25:07 [info]: 📥 GET /manifest.json | Query: {} | Params: {}
+2025-12-27 02:25:07 [info]: Serving manifest (10719 bytes)
+2025-12-27 02:25:11 [info]: 📥 GET /catalog/hentai/hentai-top-rated.json | Query: {} | Params: {}
+2025-12-27 02:25:11 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{}}
+2025-12-27 02:25:11 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
+2025-12-27 02:25:11 [info]: Request: skip=0, limit=20
+2025-12-27 02:25:11 [info]: 📤 Returning 20 items (total cached: 79, filtered: 79)
+2025-12-27 02:25:13 [info]: 📥 GET /meta/series/hmm-gishi-wa-yan-mama-junyuu-chuu.json | Query: {} | Params: {}
+2025-12-27 02:25:13 [info]: Meta request: hmm-gishi-wa-yan-mama-junyuu-chuu {"type":"series"}
+2025-12-27 02:25:16 [info]: 📥 GET /meta/series/hmm-imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii.json | Query: {} | Params: {}
+2025-12-27 02:25:16 [info]: Meta request: hmm-imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii {"type":"series"}
+2025-12-27 02:25:16 [info]: Fetching series page to find episodes: https://hentaimama.io/tvshows/imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii/
+2025-12-27 02:25:16 [info]: Found first episode slug from series page: imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii-episode-4
+2025-12-27 02:25:16 [info]: Fetching HentaiMama episode metadata for imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii-episode-4
+2025-12-27 02:25:17 [info]: Fetching series cover from: https://hentaimama.io/tvshows/imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii/
+2025-12-27 02:25:17 [info]: Found series cover art from linked page
+2025-12-27 02:25:17 [info]: Found actual series slug from episode page: imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii
+2025-12-27 02:25:17 [info]: Episode page has promotional description, will need series page description
+2025-12-27 02:25:18 [info]: Found proper title from series page: Imaizumin-chi wa Douyara Gal no Tamariba ni Natteru Rashii
+2025-12-27 02:25:18 [info]: Found proper description from series page: His house somehow ended up as the hangout spot for...
+2025-12-27 02:25:18 [info]: Found release year from series page: 2021
+2025-12-27 02:25:18 [info]: Found studio from series page: Bunnywalker
+2025-12-27 02:25:18 [info]: Discovering episodes for series: imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii
+2025-12-27 02:25:18 [info]: Found 4 episodes on series page
+2025-12-27 02:25:18 [info]: Found 4 episodes for imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii
+2025-12-27 02:25:18 [info]: Meta data for Imaizumin-chi wa Douyara Gal no Tamariba ni Natteru Rashii: studio="Bunnywalker", genres=Femdom, Gyaru, Harem, Rim job, School Girls, X-Ray
+2025-12-27 02:27:52 [info]: 📥 GET /manifest.json | Query: {} | Params: {}
+2025-12-27 02:27:52 [info]: Serving manifest (10719 bytes)
+2025-12-27 02:28:50 [info]: 📥 GET /health | Query: {} | Params: {}
+2025-12-27 02:28:50 [info]: ✅ Self-ping successful (200) - 48ms
+2025-12-27 02:31:58 [info]: 📥 GET /catalog/hentai/hentai-monthly/search=Gishi.json | Query: {} | Params: {}
+2025-12-27 02:31:58 [info]: Catalog with extra: type=hentai, id=hentai-monthly, extraArgs=search=Gishi, extra={"search":"Gishi"}
+2025-12-27 02:31:58 [info]: Catalog request: hentai-monthly {"type":"hentai","extra":{"search":"Gishi"}}
+2025-12-27 02:31:58 [info]: Search request: "Gishi" → normalized: "gishi" in catalog hentai-monthly
+2025-12-27 02:31:58 [info]: Searching HentaiMama for: "gishi"
+2025-12-27 02:31:58 [info]: [HentaiSea] Searching: gishi
+2025-12-27 02:31:58 [info]: [HentaiTV] Searching for: "gishi" via WordPress API
+2025-12-27 02:31:58 [info]: Title search: filtering catalog for "gishi"
+2025-12-27 02:31:58 [info]: Fetching HentaiMama catalog page 1 (sort: popular)
+2025-12-27 02:31:58 [info]: → Fetching URL: https://hentaimama.io/hentai-series/?filter=rating
+2025-12-27 02:31:58 [info]: Fetching HentaiMama catalog page 2 (sort: popular)
+2025-12-27 02:31:58 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/2/?filter=rating
+2025-12-27 02:31:58 [info]: Fetching HentaiMama catalog page 3 (sort: popular)
+2025-12-27 02:31:58 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/3/?filter=rating
+2025-12-27 02:31:58 [info]: 📥 GET /catalog/hentai/hentai-top-rated/search=Gishi.json | Query: {} | Params: {}
+2025-12-27 02:31:58 [info]: Catalog with extra: type=hentai, id=hentai-top-rated, extraArgs=search=Gishi, extra={"search":"Gishi"}
+2025-12-27 02:31:58 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{"search":"Gishi"}}
+2025-12-27 02:31:58 [info]: Search request: "Gishi" → normalized: "gishi" in catalog hentai-top-rated
+2025-12-27 02:31:58 [info]: Searching HentaiMama for: "gishi"
+2025-12-27 02:31:58 [info]: [HentaiSea] Searching: gishi
+2025-12-27 02:31:58 [info]: [HentaiTV] Searching for: "gishi" via WordPress API
+2025-12-27 02:31:58 [info]: Title search: filtering catalog for "gishi"
+2025-12-27 02:31:58 [info]: Fetching HentaiMama catalog page 1 (sort: popular)
+2025-12-27 02:31:58 [info]: → Fetching URL: https://hentaimama.io/hentai-series/?filter=rating
+2025-12-27 02:31:58 [info]: Fetching HentaiMama catalog page 2 (sort: popular)
+2025-12-27 02:31:58 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/2/?filter=rating
+2025-12-27 02:31:58 [info]: Fetching HentaiMama catalog page 3 (sort: popular)
+2025-12-27 02:31:58 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/3/?filter=rating
+2025-12-27 02:31:59 [info]: Found 30 elements with selector: article
+2025-12-27 02:31:59 [info]: [HentaiMama] Batch fetching metadata for 30 series...
+2025-12-27 02:31:59 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:31:59 [info]: [HentaiTV] Search found 4 results
+2025-12-27 02:31:59 [info]: [HentaiTV] Search found 4 results
+2025-12-27 02:32:00 [info]: [HentaiSea] Found 7 search results
+2025-12-27 02:32:00 [info]: [HentaiSea] Found 7 search results
+2025-12-27 02:32:01 [info]: Found 30 elements with selector: article
+2025-12-27 02:32:01 [info]: [HentaiMama] Batch fetching metadata for 30 series...
+2025-12-27 02:32:01 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:01 [info]: Found 30 elements with selector: article
+2025-12-27 02:32:01 [info]: [HentaiMama] Batch fetching metadata for 30 series...
+2025-12-27 02:32:01 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:02 [info]: Found 30 elements with selector: article
+2025-12-27 02:32:02 [info]: [HentaiMama] Batch fetching metadata for 30 series...
+2025-12-27 02:32:02 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:02 [info]: Found 30 elements with selector: article
+2025-12-27 02:32:03 [info]: [HentaiMama] Batch fetching metadata for 30 series...
+2025-12-27 02:32:03 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:03 [info]: Found 30 elements with selector: article
+2025-12-27 02:32:03 [info]: [HentaiMama] Batch fetching metadata for 30 series...
+2025-12-27 02:32:03 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:05 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:05 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:05 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:05 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:05 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:05 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:06 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:06 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:06 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:06 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:06 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:06 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:32:08 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:08 [info]: [HentaiMama] Batch fetch completed in 6202ms
+2025-12-27 02:32:16 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 02:32:16 [info]: Found 30 series (30 with full metadata)
+2025-12-27 02:32:16 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:16 [info]: [HentaiMama] Batch fetch completed in 14794ms
+2025-12-27 02:32:25 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 02:32:25 [info]: Found 30 series (30 with full metadata)
+2025-12-27 02:32:25 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:25 [info]: [HentaiMama] Batch fetch completed in 26299ms
+2025-12-27 02:32:34 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 02:32:34 [info]: Found 30 series (30 with full metadata)
+2025-12-27 02:32:34 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:34 [info]: [HentaiMama] Batch fetch completed in 33398ms
+2025-12-27 02:32:43 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 02:32:43 [info]: Found 30 series (30 with full metadata)
+2025-12-27 02:32:43 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:43 [info]: [HentaiMama] Batch fetch completed in 39997ms
+2025-12-27 02:32:51 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 02:32:51 [info]: Found 30 series (30 with full metadata)
+2025-12-27 02:32:51 [info]: Searching across 79 series
+2025-12-27 02:32:51 [info]: Sample series names: Uchi no Otouto Maji de Dekain Dakedo Mi ni Konai, Youkoso! Sukebe Elf no Mori e, Imaizumin-chi wa Douyara Gal no Tamariba ni Natteru Rashii, Victorian Maid Maria no Houshi, Gishi wa Yan Mama Junyuu Chuu
+2025-12-27 02:32:51 [info]: Search query: "gishi", words: [gishi]
+2025-12-27 02:32:51 [info]: Checking series: "Uchi no Otouto Maji de Dekain Dakedo Mi ni Konai" (id: hmm-uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai)
+2025-12-27 02:32:51 [info]:   - englishTitle: "none"
+2025-12-27 02:32:51 [info]:   - genres: [Femdom, Gyaru, Harem, Horny Slut, School Girls, Shoutacon, Step Sister, X-Ray, Bunnywalker]
+2025-12-27 02:32:51 [info]:   - seriesName.includes("gishi"): false
+2025-12-27 02:32:51 [info]:   - englishTitle.includes("gishi"): false
+2025-12-27 02:32:51 [info]:   - seriesId.includes("gishi"): false
+2025-12-27 02:32:51 [info]:   - seriesGenres.includes("gishi"): false
+2025-12-27 02:32:51 [info]: Checking series: "Youkoso! Sukebe Elf no Mori e" (id: hmm-youkoso-sukebe-elf-no-mori-e)
+2025-12-27 02:32:51 [info]:   - englishTitle: "none"
+2025-12-27 02:32:51 [info]:   - genres: [Ahegao, Creampie, Cute & Funny, Dark Skin, Elf, Facesitting, Fantasy, Harem, Internal Cumshot, Large Breasts, Super Power, Virgins, X-Ray, Bunnywalker]
+2025-12-27 02:32:51 [info]:   - seriesName.includes("gishi"): false
+2025-12-27 02:32:51 [info]:   - englishTitle.includes("gishi"): false
+2025-12-27 02:32:51 [info]:   - seriesId.includes("gishi"): false
+2025-12-27 02:32:51 [info]:   - seriesGenres.includes("gishi"): false
+2025-12-27 02:32:51 [info]: Checking series: "Imaizumin-chi wa Douyara Gal no Tamariba ni Natteru Rashii" (id: hmm-imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii)
+2025-12-27 02:32:51 [info]:   - englishTitle: "none"
+2025-12-27 02:32:51 [info]:   - genres: [Femdom, Gyaru, Harem, Rim job, School Girls, X-Ray, Bunnywalker]
+2025-12-27 02:32:51 [info]:   - seriesName.includes("gishi"): false
+2025-12-27 02:32:51 [info]:   - englishTitle.includes("gishi"): false
+2025-12-27 02:32:51 [info]:   - seriesId.includes("gishi"): false
+2025-12-27 02:32:51 [info]:   - seriesGenres.includes("gishi"): false
+2025-12-27 02:32:51 [info]: ✓ MATCH: "Gishi wa Yan Mama Junyuu Chuu" (matched in: name id )
+2025-12-27 02:32:51 [info]: Title search found 1 matches for "gishi"
+2025-12-27 02:32:51 [info]: Aggregating catalogs from 3 providers
+2025-12-27 02:32:51 [info]: Processing 1 series from HentaiMama
+2025-12-27 02:32:51 [info]: Processing 7 series from HentaiSea
+2025-12-27 02:32:51 [info]: Processing 4 series from HentaiTV
+2025-12-27 02:32:51 [info]: 📊 Aggregation stats:
+2025-12-27 02:32:51 [info]:   HentaiMama: 1 total → 1 added, 0 merged
+2025-12-27 02:32:51 [info]:   HentaiSea: 7 total → 6 added, 1 merged
+2025-12-27 02:32:51 [info]:   HentaiTV: 4 total → 1 added, 3 merged
+2025-12-27 02:32:51 [info]: 📊 Final ID prefixes: {"hmm":1,"htv":4,"hse":3}
+2025-12-27 02:32:51 [info]: Catalog aggregation complete: 8 unique series from 3 providers (2ms)
+2025-12-27 02:32:51 [info]: Aggregated search "gishi" returned 8 results from 3 providers
+2025-12-27 02:32:51 [info]: Search "gishi" returned 8 results
+2025-12-27 02:32:51 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:32:51 [info]: [HentaiMama] Batch fetch completed in 48609ms
+2025-12-27 02:33:00 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 02:33:00 [info]: Found 30 series (30 with full metadata)
+2025-12-27 02:33:00 [info]: Searching across 79 series
+2025-12-27 02:33:01 [info]: Sample series names: Uchi no Otouto Maji de Dekain Dakedo Mi ni Konai, Youkoso! Sukebe Elf no Mori e, Imaizumin-chi wa Douyara Gal no Tamariba ni Natteru Rashii, Victorian Maid Maria no Houshi, Gishi wa Yan Mama Junyuu Chuu
+2025-12-27 02:33:01 [info]: Search query: "gishi", words: [gishi]
+2025-12-27 02:33:01 [info]: Checking series: "Uchi no Otouto Maji de Dekain Dakedo Mi ni Konai" (id: hmm-uchi-no-otouto-maji-de-dekain-dakedo-mi-ni-konai)
+2025-12-27 02:33:01 [info]:   - englishTitle: "none"
+2025-12-27 02:33:01 [info]:   - genres: [Femdom, Gyaru, Harem, Horny Slut, School Girls, Shoutacon, Step Sister, X-Ray, Bunnywalker]
+2025-12-27 02:33:01 [info]:   - seriesName.includes("gishi"): false
+2025-12-27 02:33:01 [info]:   - englishTitle.includes("gishi"): false
+2025-12-27 02:33:01 [info]:   - seriesId.includes("gishi"): false
+2025-12-27 02:33:01 [info]:   - seriesGenres.includes("gishi"): false
+2025-12-27 02:33:01 [info]: Checking series: "Youkoso! Sukebe Elf no Mori e" (id: hmm-youkoso-sukebe-elf-no-mori-e)
+2025-12-27 02:33:01 [info]:   - englishTitle: "none"
+2025-12-27 02:33:01 [info]:   - genres: [Ahegao, Creampie, Cute & Funny, Dark Skin, Elf, Facesitting, Fantasy, Harem, Internal Cumshot, Large Breasts, Super Power, Virgins, X-Ray, Bunnywalker]
+2025-12-27 02:33:01 [info]:   - seriesName.includes("gishi"): false
+2025-12-27 02:33:01 [info]:   - englishTitle.includes("gishi"): false
+2025-12-27 02:33:01 [info]:   - seriesId.includes("gishi"): false
+2025-12-27 02:33:01 [info]:   - seriesGenres.includes("gishi"): false
+2025-12-27 02:33:01 [info]: Checking series: "Imaizumin-chi wa Douyara Gal no Tamariba ni Natteru Rashii" (id: hmm-imaizumin-chi-wa-douyara-gal-no-tamariba-ni-natteru-rashii)
+2025-12-27 02:33:01 [info]:   - englishTitle: "none"
+2025-12-27 02:33:01 [info]:   - genres: [Femdom, Gyaru, Harem, Rim job, School Girls, X-Ray, Bunnywalker]
+2025-12-27 02:33:01 [info]:   - seriesName.includes("gishi"): false
+2025-12-27 02:33:01 [info]:   - englishTitle.includes("gishi"): false
+2025-12-27 02:33:01 [info]:   - seriesId.includes("gishi"): false
+2025-12-27 02:33:01 [info]:   - seriesGenres.includes("gishi"): false
+2025-12-27 02:33:01 [info]: ✓ MATCH: "Gishi wa Yan Mama Junyuu Chuu" (matched in: name id )
+2025-12-27 02:33:01 [info]: Title search found 1 matches for "gishi"
+2025-12-27 02:33:01 [info]: Aggregating catalogs from 3 providers
+2025-12-27 02:33:01 [info]: Processing 1 series from HentaiMama
+2025-12-27 02:33:01 [info]: Processing 7 series from HentaiSea
+2025-12-27 02:33:01 [info]: Processing 4 series from HentaiTV
+2025-12-27 02:33:01 [info]: 📊 Aggregation stats:
+2025-12-27 02:33:01 [info]:   HentaiMama: 1 total → 1 added, 0 merged
+2025-12-27 02:33:01 [info]:   HentaiSea: 7 total → 6 added, 1 merged
+2025-12-27 02:33:01 [info]:   HentaiTV: 4 total → 1 added, 3 merged
+2025-12-27 02:33:01 [info]: 📊 Final ID prefixes: {"hmm":1,"htv":4,"hse":3}
+2025-12-27 02:33:01 [info]: Catalog aggregation complete: 8 unique series from 3 providers (2ms)
+2025-12-27 02:33:01 [info]: Aggregated search "gishi" returned 8 results from 3 providers
+2025-12-27 02:33:01 [info]: Search "gishi" returned 8 results
+2025-12-27 02:34:40 [info]: 📥 GET /catalog/hentai/hentai-top-rated.json | Query: {} | Params: {}
+2025-12-27 02:34:40 [info]: Catalog request: hentai-top-rated {"type":"hentai","extra":{}}
+2025-12-27 02:34:40 [info]: Catalog strategy: sortType=rating, filterType=null, studioFilter=false, yearFilter=false
+2025-12-27 02:34:40 [info]: Request: skip=0, limit=20
+2025-12-27 02:34:40 [info]: 📤 Returning 20 items (total cached: 79, filtered: 79)
+2025-12-27 02:34:42 [info]: 📥 GET /catalog/hentai/hentai-monthly.json | Query: {} | Params: {}
+2025-12-27 02:34:42 [info]: Catalog request: hentai-monthly {"type":"hentai","extra":{}}
+2025-12-27 02:34:42 [info]: Catalog strategy: sortType=date, filterType=monthly, studioFilter=false, yearFilter=false
+2025-12-27 02:34:42 [info]: Request: skip=0, limit=20
+2025-12-27 02:34:42 [info]: Have 79 series, need 100, fetching page 2
+2025-12-27 02:34:42 [info]: Fetching HentaiMama catalog page 2 (sort: popular)
+2025-12-27 02:34:42 [info]: → Fetching URL: https://hentaimama.io/hentai-series/page/2/?filter=rating
+2025-12-27 02:34:42 [info]: [HentaiSea] Fetching trending page 2: https://hentaisea.com/trending/page/2/
+2025-12-27 02:34:42 [info]: [HentaiTV] Fetching catalog from search page 2: https://hentai.tv/page/2/?s=
+2025-12-27 02:34:42 [info]: Found 30 elements with selector: article
+2025-12-27 02:34:42 [info]: [HentaiMama] Batch fetching metadata for 30 series...
+2025-12-27 02:34:42 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:34:43 [info]: [HentaiSea] Batch fetching metadata for 20 trending items...
+2025-12-27 02:34:44 [info]: [HentaiTV] Found 21 unique series with view counts from search page 2
+2025-12-27 02:34:44 [info]: [HentaiTV] Batch fetching metadata via WordPress API for 20 items...
+2025-12-27 02:34:45 [info]: [HentaiSea] Batch fetch completed in 2296ms
+2025-12-27 02:34:48 [info]: [HentaiSea] Enriched 20/20 items with metadata
+2025-12-27 02:34:48 [info]: [HentaiSea] Items with genres: 20/30
+2025-12-27 02:34:48 [info]: [HentaiSea] Trending complete: 30 items (page 2)
+2025-12-27 02:34:49 [info]: [HentaiTV] WordPress API batch fetch completed in 4805ms
+2025-12-27 02:34:49 [info]: [HentaiTV] Enriched 20/20 items with metadata
+2025-12-27 02:34:49 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:34:49 [info]: [HttpClient] Batch fetching 15 URLs via CF Worker
+2025-12-27 02:34:49 [info]: [HttpClient] Batch complete: 15/15 successful
+2025-12-27 02:34:49 [info]: [HentaiMama] Batch fetch completed in 7110ms
+2025-12-27 02:34:59 [info]: [HentaiMama] Enriched 30/30 series with metadata
+2025-12-27 02:34:59 [info]: Found 30 series (30 with full metadata)
+2025-12-27 02:34:59 [info]: Aggregating catalogs from 3 providers
+2025-12-27 02:34:59 [info]: Processing 30 series from HentaiMama
+2025-12-27 02:34:59 [info]: Processing 30 series from HentaiSea
+2025-12-27 02:34:59 [info]: Processing 21 series from HentaiTV
+2025-12-27 02:34:59 [info]: 📊 Aggregation stats:
+2025-12-27 02:34:59 [info]:   HentaiMama: 30 total → 30 added, 0 merged
+2025-12-27 02:34:59 [info]:   HentaiSea: 30 total → 30 added, 0 merged
+2025-12-27 02:34:59 [info]:   HentaiTV: 21 total → 21 added, 0 merged
+2025-12-27 02:34:59 [info]: 📊 Final ID prefixes: {"hmm":30,"hse":30,"htv":21}
+2025-12-27 02:34:59 [info]: Catalog aggregation complete: 81 unique series from 3 providers (303ms)
+2025-12-27 02:35:00 [info]: Page 2: 81 total items from providers → 81 after aggregation → 68 NEW unique + 13 merged with existing
+2025-12-27 02:35:00 [info]: Time filter (monthly): 147 → 0 items
+2025-12-27 02:35:00 [info]: 📤 Returning 0 items (total cached: 147, filtered: 0)

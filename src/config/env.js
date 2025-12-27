@@ -29,8 +29,8 @@ module.exports = {
   addon: {
     name: process.env.ADDON_NAME || 'HentaiStream',
     id: process.env.ADDON_ID || 'com.hentaistream.addon',
-    version: process.env.ADDON_VERSION || '0.1.0',
-    description: process.env.ADDON_DESCRIPTION || '🔞 18+ ONLY - Premium adult anime streaming\n\n📺 3 Providers: HentaiMama, HentaiTV, HentaiSea\n⭐ Aggregated ratings from all sources\n\n📂 Catalogs: Top Rated, Weekly/Monthly Releases, A-Z, Studios, Release Year\n🏷️ 100+ genre filters\n🎬 200+ animation studios',
+    version: process.env.ADDON_VERSION || '1.0.0',
+    description: process.env.ADDON_DESCRIPTION || '18+ ONLY - Your one stop shop for all your favourite Hentai! The content is fetched from 3 Providers: HentaiMama, HentaiTV and HentaiSea. The addon has aggregated ratings from all sources, catalogs (Top Rated, Recent Releases, Animation Studios, Release Year as well as 100+ genre filters.'
   },
   
   logging: {

@@ -1,23 +1,3 @@
-/**
- * Cloudflare Worker Proxy for HentaiStream Addon
- * 
- * This worker acts as a proxy to bypass Cloudflare protection.
- * Deploy this to Cloudflare Workers (free tier: 100K requests/day)
- * 
- * Features:
- * - Single URL mode: ?url=<encoded_url>
- * - BATCH mode: ?urls=<encoded_url1>,<encoded_url2>,... (up to 20 URLs)
- * - POST support: ?method=POST&body=<encoded_body>
- * 
- * Setup:
- * 1. Go to https://dash.cloudflare.com/
- * 2. Create account (free)
- * 3. Go to Workers & Pages > Create Worker
- * 4. Paste this code and deploy
- * 5. Copy the worker URL (e.g., https://your-worker.your-subdomain.workers.dev)
- * 6. Set CF_PROXY_URL environment variable in Render to this URL
- */
-
 // Build headers that mimic a real browser
 function buildBrowserHeaders() {
   return {

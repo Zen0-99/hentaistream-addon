@@ -113,10 +113,19 @@ function parseCatalogId(id) {
  * Apply filtering based on catalog type
  * @param {Array} series - Array of series objects
  * @param {string} filterType - 'weekly', 'monthly', or null
+ * @param {boolean} alreadyDateSorted - If true, skip filtering (source already provides date-sorted data)
  * @returns {Array} Filtered series
  */
-function applyTimeFilter(series, filterType) {
+function applyTimeFilter(series, filterType, alreadyDateSorted = false) {
   if (!filterType) return series;
+  
+  // If the source already provides date-sorted data (e.g., /episodes page),
+  // skip strict filtering since items are already recent
+  // This avoids the problem where lastUpdated field is missing
+  if (alreadyDateSorted) {
+    logger.info(`Skipping time filter (alreadyDateSorted=true), returning ${series.length} items`);
+    return series;
+  }
   
   return series.filter(item => {
     if (!item.lastUpdated) return false;
@@ -292,6 +301,11 @@ async function catalogHandler(args) {
   const { sortType, filterType, studioFilter, yearFilter } = parseCatalogId(id);
   logger.info(`Catalog strategy: sortType=${sortType}, filterType=${filterType}, studioFilter=${studioFilter}, yearFilter=${yearFilter}`);
 
+  // Determine the sort order to pass to scrapers
+  // 'date' sortType (hentai-monthly, hentai-weekly) should use 'recent' sorting
+  // This fetches from /episodes which is already sorted by date
+  const scraperSortBy = (sortType === 'date') ? 'recent' : 'popular';
+
   // Extract genre from catalog ID (e.g., 'hentaimama-genre-uncensored')
   const catalogGenreMatch = id.match(/^hentaimama-genre-(.+)$/);
   const catalogGenre = catalogGenreMatch ? catalogGenreMatch[1] : null;
@@ -380,7 +394,7 @@ async function catalogHandler(args) {
               // If scraper returns null, it doesn't support direct year fetch
               // Fall back to general catalog + local filtering
               if (newSeries === null) {
-                newSeries = await scraperInstance.getCatalog(catalogData.nextPage, null, 'popular');
+                newSeries = await scraperInstance.getCatalog(catalogData.nextPage, null, scraperSortBy);
                 // Apply strict local year filter since this provider doesn't have year pages
                 if (Array.isArray(newSeries)) {
                   const yearNum = parseInt(extraGenre);
@@ -392,7 +406,7 @@ async function catalogHandler(args) {
               
               // If scraper returns null, fall back to local filtering
               if (newSeries === null) {
-                newSeries = await scraperInstance.getCatalog(catalogData.nextPage, null, 'popular');
+                newSeries = await scraperInstance.getCatalog(catalogData.nextPage, null, scraperSortBy);
                 if (Array.isArray(newSeries)) {
                   const studioLower = extraGenre.toLowerCase();
                   newSeries = newSeries.filter(item => 
@@ -403,7 +417,7 @@ async function catalogHandler(args) {
             } else if (genre) {
               newSeries = await scraperInstance.getCatalogByGenre(genre, catalogData.nextPage);
             } else {
-              newSeries = await scraperInstance.getCatalog(catalogData.nextPage, null, 'popular');
+              newSeries = await scraperInstance.getCatalog(catalogData.nextPage, null, scraperSortBy);
             }
             
             return {
@@ -430,7 +444,7 @@ async function catalogHandler(args) {
         } else if (genre) {
           newSeries = await scraper.getCatalogByGenre(genre, catalogData.nextPage);
         } else {
-          newSeries = await scraper.getCatalog(catalogData.nextPage, null, 'popular');
+          newSeries = await scraper.getCatalog(catalogData.nextPage, null, scraperSortBy);
         }
         
         providerResults = [{
@@ -539,9 +553,12 @@ async function catalogHandler(args) {
   }
   
   // Apply time-based filtering (weekly/monthly)
+  // If we're already fetching from a date-sorted source (scraperSortBy === 'recent'),
+  // skip strict filtering since the source already provides recent content
+  const alreadyDateSorted = (scraperSortBy === 'recent');
   if (filterType) {
     const beforeFilter = workingSet.length;
-    workingSet = applyTimeFilter(workingSet, filterType);
+    workingSet = applyTimeFilter(workingSet, filterType, alreadyDateSorted);
     logger.info(`Time filter (${filterType}): ${beforeFilter} → ${workingSet.length} items`);
   }
   
