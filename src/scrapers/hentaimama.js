@@ -977,30 +977,38 @@ class HentaiMamaScraper {
       // Clean up description - aggressively remove ALL promotional text patterns
       // These patterns appear on HentaiMama episode pages and should be stripped
       const isPromoText = (text) => {
+        if (!text || text.length < 10) return true;
         const promoPatterns = [
-          /^Stream\s+.+?\s+Episode\s+\d+\s+with\s+English/i,
+          /^Stream\s+.+?\s+Episode\s+\d+/i,
           /^Watch\s+.+?\s+Episode\s+\d+/i,
           /We have thousands of hentai videos/i,
           /Hentaimama have thousands/i,
           /New videos added weekly/i,
           /your viewing pleasure/i,
-          /Stream.*?for free\.?\s*$/i
+          /for free\.\s*We have/i,
+          /English Subtitle for free/i,
+          /thousands of free hentai/i,
+          /3D porn all of your/i
         ];
         return promoPatterns.some(p => p.test(text));
       };
       
-      // If the og:description is promotional, mark it for replacement
-      const ogDescriptionIsPromo = isPromoText(description);
-      
-      // Clean up promotional phrases even if we keep some of the text
-      description = description
-        .replace(/Watch.*?HentaiMama/gi, '')
-        .replace(/Stream\s+.+?\s+Episode\s+\d+\s+with\s+English\s+Subtitle\s+for\s+free\.?/gi, '')
-        .replace(/We have thousands of hentai videos.*?(?:viewing pleasure!?)?/gi, '')
-        .replace(/Hentaimama have thousands.*?(?:viewing pleasure!?)?/gi, '')
-        .replace(/New videos added weekly\.?/gi, '')
-        .replace(/online\.\s*$/gi, '')
-        .trim();
+      // If the ENTIRE description is promotional (starts with Stream/Watch), clear it entirely
+      // This is because the promotional text often includes ALL the patterns joined together
+      if (/^(Stream|Watch)\s+.+?\s+Episode\s+\d+/i.test(description)) {
+        logger.info(`Episode page has promotional description, will need series page description`);
+        description = ''; // Clear it, we'll get it from series page
+      } else {
+        // Clean up promotional phrases if mixed with real content
+        description = description
+          .replace(/Watch.*?HentaiMama/gi, '')
+          .replace(/Stream\s+.+?\s+Episode\s+\d+\s+with\s+English\s+Subtitle\s+for\s+free\.?/gi, '')
+          .replace(/We have thousands of hentai videos.*?(?:viewing pleasure!?)?/gi, '')
+          .replace(/Hentaimama have thousands.*?(?:viewing pleasure!?)?/gi, '')
+          .replace(/New videos added weekly\.?/gi, '')
+          .replace(/online\.\s*$/gi, '')
+          .trim();
+      }
 
       // Try to extract tags/genres
       const genres = [];
@@ -1052,11 +1060,15 @@ class HentaiMamaScraper {
           });
           
           // Fallback to og:description if no good paragraph found
+          // BUT only if it's not promotional text
           if (!seriesDesc) {
-            seriesDesc = $seriesPage('meta[property="og:description"]').attr('content') || '';
+            const ogDesc = $seriesPage('meta[property="og:description"]').attr('content') || '';
+            if (ogDesc && !isPromoText(ogDesc)) {
+              seriesDesc = ogDesc;
+            }
           }
           
-          if (seriesDesc && seriesDesc.length > 20) {
+          if (seriesDesc && seriesDesc.length > 20 && !isPromoText(seriesDesc)) {
             // Final cleanup of any promotional remnants
             description = seriesDesc
               .replace(/Watch.*?HentaiMama/gi, '')
