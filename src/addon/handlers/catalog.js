@@ -4,7 +4,17 @@ const hentaimamaScraper = require('../../scrapers/hentaimama');
 const oppaiStreamScraper = require('../../scrapers/oppaistream');
 const hentaiseaScraper = require('../../scrapers/hentaisea');
 const hentaitvScraper = require('../../scrapers/hentaitv');
-const { aggregateCatalogs, isDuplicate, mergeSeries, calculateAverageRating } = require('../../utils/catalogAggregator');
+const { 
+  aggregateCatalogs, 
+  isDuplicate, 
+  mergeSeries, 
+  calculateAverageRating, 
+  getCatalogFromDatabase, 
+  isDatabaseReady,
+  getNewestDatabaseDate,
+  getDatabaseBuildDate,
+  searchDatabase
+} = require('../../utils/catalogAggregator');
 const ratingNormalizer = require('../../utils/ratingNormalizer');
 const { isWithinWeek, isWithinMonth, compareDatesNewestFirst } = require('../../utils/dateParser');
 const { shouldIncludeSeries, DEFAULT_CONFIG } = require('../../utils/configParser');
@@ -16,6 +26,61 @@ const SCRAPER_MAP = {
   hse: hentaiseaScraper,
   htv: hentaitvScraper
 };
+
+/**
+ * Format a series object to Stremio meta format
+ * Used for both database and scraper results
+ * @param {Object} series - Series object from database or aggregator
+ * @returns {Object} Stremio-compatible meta object
+ */
+function formatSeriesMeta(series) {
+  const formatted = { ...series };
+  
+  // IMPORTANT: For Stremio to display metas properly, we need type='series'
+  formatted.type = 'series';
+  
+  // Use runtime field for rating display (to avoid IMDb logo)
+  // Priority-based system: HentaiMama > HentaiTV > HentaiSea > N/A
+  if (series.ratingIsNA) {
+    formatted.runtime = `★ N/A`;
+  } else if (series.rating !== null && series.rating !== undefined && !isNaN(series.rating)) {
+    formatted.runtime = `★ ${series.rating.toFixed(1)}`;
+  } else {
+    formatted.runtime = `★ N/A`;
+  }
+  
+  // releaseInfo should only contain year
+  if (series.year) {
+    formatted.releaseInfo = series.year.toString();
+  }
+  
+  // Ensure genres array is passed through
+  const genres = (series.genres && Array.isArray(series.genres) && series.genres.length > 0) 
+    ? series.genres 
+    : [];
+  formatted.genres = genres.length > 0 ? genres : undefined;
+  
+  // Build links array with BOTH studio and genres
+  const studioLinks = series.studio ? [{
+    name: series.studio,
+    category: 'Studio',
+    url: `stremio:///search?search=${encodeURIComponent(series.studio)}`
+  }] : [];
+  
+  const genreLinks = genres.map(genre => ({
+    name: genre,
+    category: 'Genres',
+    url: `stremio:///search?search=${encodeURIComponent(genre)}`
+  }));
+  
+  // Combine: genres first, then studio
+  const allLinks = [...genreLinks, ...studioLinks];
+  if (allLinks.length > 0) {
+    formatted.links = allLinks;
+  }
+  
+  return formatted;
+}
 
 /**
  * Genre name to slug mapping for HentaiMama
@@ -54,15 +119,18 @@ const GENRE_SLUG_MAP = {
 /**
  * Convert genre display name to URL slug for a provider
  * Uses genreMatcher for proper slug mapping
- * @param {string} genreName - Display name like "Animal Girls"
+ * @param {string} genreName - Display name like "Animal Girls" or "3D (1737)"
  * @param {string} provider - Provider name (hentaimama, hentaisea, hentaitv)
  * @returns {string} URL slug like "animal-ears"
  */
 function genreNameToSlug(genreName, provider = 'hentaimama') {
   if (!genreName) return null;
   
+  // IMPORTANT: Remove count suffix like " (1737)" before converting to slug
+  const cleanName = genreName.replace(/\\s*\\(\\d+\\)$/, '').trim();
+  
   // Use genreMatcher for provider-specific slug mapping
-  return genreMatcher.getSlugForProvider(genreName, provider);
+  return genreMatcher.getSlugForProvider(cleanName, provider);
 }
 
 /**
@@ -134,57 +202,97 @@ function isOurCatalog(id) {
 /**
  * Parse catalog ID to determine sorting/filtering strategy
  * @param {string} id - Catalog ID
- * @returns {Object} { sortType, filterType, studioFilter, yearFilter }
+ * @returns {Object} { sortType, filterType, studioFilter, yearFilter, timePeriodFilter }
  */
 function parseCatalogId(id) {
-  // New catalog types: hentai-weekly, hentai-monthly, hentai-top-rated, hentai-a-z, hentai-studios, hentai-years, hentai-all
+  // New catalog types: hentai-weekly, hentai-monthly, hentai-top-rated, hentai-a-z, hentai-studios, hentai-years, hentai-all, hentai-search
   switch (id) {
     case 'hentai-weekly':
-      return { sortType: 'date', filterType: 'weekly', studioFilter: false, yearFilter: false };
+      return { sortType: 'date', filterType: 'weekly', studioFilter: false, yearFilter: false, timePeriodFilter: false };
     case 'hentai-monthly':
-      return { sortType: 'date', filterType: 'monthly', studioFilter: false, yearFilter: false };
+      // Now uses time period filter from genre dropdown (This Week, This Month, etc.)
+      return { sortType: 'date', filterType: null, studioFilter: false, yearFilter: false, timePeriodFilter: true };
     case 'hentai-top-rated':
-      return { sortType: 'rating', filterType: null, studioFilter: false, yearFilter: false };
+      return { sortType: 'rating', filterType: null, studioFilter: false, yearFilter: false, timePeriodFilter: false };
     case 'hentai-a-z':
-      return { sortType: 'alphabetical', filterType: null, studioFilter: false, yearFilter: false };
+      return { sortType: 'alphabetical', filterType: null, studioFilter: false, yearFilter: false, timePeriodFilter: false };
     case 'hentai-studios':
-      return { sortType: 'default', filterType: null, studioFilter: true, yearFilter: false };
+      return { sortType: 'default', filterType: null, studioFilter: true, yearFilter: false, timePeriodFilter: false };
     case 'hentai-years':
-      return { sortType: 'date', filterType: null, studioFilter: false, yearFilter: true };
+      return { sortType: 'date', filterType: null, studioFilter: false, yearFilter: true, timePeriodFilter: false };
+    case 'hentai-search':
+      // Search-only catalog - uses database search, no sorting/filtering needed
+      return { sortType: 'relevance', filterType: null, studioFilter: false, yearFilter: false, timePeriodFilter: false };
     case 'hentai-all':
     case 'hentai':
     default:
-      return { sortType: 'default', filterType: null, studioFilter: false, yearFilter: false }; // Default: metadata score
+      return { sortType: 'default', filterType: null, studioFilter: false, yearFilter: false, timePeriodFilter: false }; // Default: metadata score
   }
 }
 
 /**
- * Apply filtering based on catalog type
+ * Parse time period from genre filter value
+ * Converts "This Week (45)" or "This Week" to a filter type
+ * @param {string} timePeriod - Time period string from genre filter
+ * @returns {string|null} Filter type: 'week', 'month', '3months', 'year', or null
+ */
+function parseTimePeriod(timePeriod) {
+  if (!timePeriod) return null;
+  
+  // Remove count suffix like " (45)" and normalize
+  const clean = timePeriod.replace(/\s*\(\d+\)$/, '').trim().toLowerCase();
+  
+  if (clean === 'this week') return 'week';
+  if (clean === 'this month') return 'month';
+  if (clean === '3 months') return '3months';
+  if (clean === 'this year') return 'year';
+  
+  return null;
+}
+
+/**
+ * Apply time-based filtering for New Releases catalog
+ * STRICT DATE FILTERING: Only items with actual lastUpdated dates are included
+ * Items without dates are EXCLUDED from New Releases to ensure accuracy
  * @param {Array} series - Array of series objects
- * @param {string} filterType - 'weekly', 'monthly', or null
- * @param {boolean} alreadyDateSorted - If true, skip filtering (source already provides date-sorted data)
+ * @param {string} filterType - 'week', 'month', '3months', 'year', 'weekly', 'monthly', or null
  * @returns {Array} Filtered series
  */
-function applyTimeFilter(series, filterType, alreadyDateSorted = false) {
+function applyTimeFilter(series, filterType) {
   if (!filterType) return series;
   
-  // If the source already provides date-sorted data (e.g., /episodes page),
-  // skip strict filtering since items are already recent
-  // This avoids the problem where lastUpdated field is missing
-  if (alreadyDateSorted) {
-    logger.info(`Skipping time filter (alreadyDateSorted=true), returning ${series.length} items`);
-    return series;
-  }
+  const now = new Date();
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
   
   return series.filter(item => {
-    if (!item.lastUpdated) return false;
-    
-    if (filterType === 'weekly') {
-      return isWithinWeek(item.lastUpdated);
-    } else if (filterType === 'monthly') {
-      return isWithinMonth(item.lastUpdated);
+    // STRICT: Only include items with actual lastUpdated date
+    // Items without dates are excluded from New Releases for accuracy
+    if (!item.lastUpdated) {
+      return false;
     }
-    return true;
+    
+    const itemDate = new Date(item.lastUpdated);
+    if (isNaN(itemDate.getTime())) {
+      return false;
+    }
+    
+    switch (filterType) {
+      case 'week':
+      case 'weekly':
+        return itemDate >= oneWeekAgo;
+      case 'month':
+      case 'monthly':
+        return itemDate >= oneMonthAgo;
+      case '3months':
+        return itemDate >= threeMonthsAgo;
+      case 'year':
+        return itemDate >= oneYearAgo;
+      default:
+        return false;
+    }
   });
 }
 
@@ -264,31 +372,32 @@ function applySorting(series, sortType) {
 function applyStudioFilter(series, studioName) {
   if (!studioName) return series;
   
-  const normalizedSearch = studioName.toLowerCase().trim();
+  // Extract clean studio name (remove count suffix like " (123)")
+  const cleanName = studioName.replace(/\s*\(\d+\)$/, '').trim();
+  const normalizedSearch = cleanName.toLowerCase();
   
   return series.filter(item => {
     if (!item.studio) return false;
     
-    // Case-insensitive comparison
+    // Case-insensitive EXACT match only
+    // "Edge" should NOT match "Edge Systems" or "Etching Edge"
     const normalizedStudio = item.studio.toLowerCase().trim();
-    
-    // Exact match or very close match
-    return normalizedStudio === normalizedSearch ||
-           normalizedStudio.includes(normalizedSearch) ||
-           normalizedSearch.includes(normalizedStudio);
+    return normalizedStudio === normalizedSearch;
   });
 }
 
 /**
  * Apply year filter
  * @param {Array} series - Array of series objects
- * @param {string} year - Year to filter by (from genre parameter)
+ * @param {string} year - Year to filter by (from genre parameter), may include count like "2024 (64)"
  * @returns {Array} Filtered series
  */
 function applyYearFilter(series, year) {
   if (!year) return series;
   
-  const targetYear = parseInt(year);
+  // Extract clean year (remove count suffix like " (123)")
+  const cleanYear = year.replace(/\s*\(\d+\)$/, '').trim();
+  const targetYear = parseInt(cleanYear);
   if (isNaN(targetYear)) return series;
   
   return series.filter(item => {
@@ -296,7 +405,10 @@ function applyYearFilter(series, year) {
     if (item.year === targetYear) return true;
     
     // Check releaseInfo for year
-    if (item.releaseInfo && item.releaseInfo.includes(year)) return true;
+    if (item.releaseInfo) {
+      const match = String(item.releaseInfo).match(/(\d{4})/);
+      if (match && parseInt(match[1]) === targetYear) return true;
+    }
     
     // Check lastUpdated date year as fallback
     if (item.lastUpdated) {
@@ -309,10 +421,57 @@ function applyYearFilter(series, year) {
 }
 
 /**
+ * Handle "New Releases" catalog - DATABASE ONLY
+ * 
+ * APPROACH:
+ * 1. Get all content from database sorted by date
+ * 2. Apply weekly/monthly/3months/year time filter
+ * 3. Return paginated results
+ * 
+ * No scraping needed - the incremental update script handles adding new content.
+ */
+async function handleNewReleasesCatalog(catalogId, filterType, skip, limit, genre, userConfig) {
+  logger.info(`📅 New Releases: filterType=${filterType}, skip=${skip}, limit=${limit}`);
+  
+  // Step 1: Get database content sorted by date
+  const dbItems = getCatalogFromDatabase({
+    provider: null,
+    genre: genre, // Usually null for New Releases
+    skip: 0, // Get all for time filtering
+    limit: 1000, // Get enough items for time filtering
+    sortBy: 'recent'
+  }) || [];
+  
+  if (dbItems.length === 0) {
+    logger.warn(`📦 New Releases: No items in database`);
+    return { metas: [] };
+  }
+  
+  logger.info(`📦 New Releases: Database has ${dbItems.length} items sorted by date`);
+  
+  // Step 2: Apply time filter using centralized function
+  // Handles: 'week'/'weekly', 'month'/'monthly', '3months', 'year'
+  let filtered = filterType ? applyTimeFilter(dbItems, filterType) : dbItems;
+  logger.info(`📅 Time filter (${filterType || 'none'}): ${dbItems.length} → ${filtered.length} items`);
+  
+  // Step 3: Apply user blacklist
+  filtered = filtered.filter(item => shouldIncludeSeries(item, userConfig));
+  
+  // Step 4: Paginate and format
+  const result = filtered.slice(skip, skip + limit);
+  const metas = result.map(formatSeriesMeta);
+  
+  logger.info(`📦 New Releases: returning ${metas.length} items (skip=${skip}, total=${filtered.length})`);
+  return { metas };
+}
+
+/**
  * Catalog handler with infinite scroll
  * 
- * APPROACH: Maintain a growing cache of series as we fetch them.
- * Never think about "pages" - just keep fetching until we have enough items.
+ * APPROACH: Database-first, scrapers for new content
+ * 1. Check pre-bundled database for instant catalog data
+ * 2. For "New Releases" or cache miss, fall back to scrapers
+ * 3. Maintain growing cache for scraped content
  */
 async function catalogHandler(args) {
   const { type, id, extra = {}, config } = args;
@@ -341,39 +500,110 @@ async function catalogHandler(args) {
     return { metas: [] };
   }
 
-  // Handle search queries
+  // Handle search queries (always use scrapers for live search)
   if (extra.search) {
     return handleSearch(id, extra.search, userConfig);
   }
   
   // Parse catalog ID to get sorting/filtering strategy
-  const { sortType, filterType, studioFilter, yearFilter } = parseCatalogId(id);
-  logger.info(`Catalog strategy: sortType=${sortType}, filterType=${filterType}, studioFilter=${studioFilter}, yearFilter=${yearFilter}`);
+  const { sortType, filterType, studioFilter, yearFilter, timePeriodFilter } = parseCatalogId(id);
+  logger.info(`Catalog strategy: sortType=${sortType}, filterType=${filterType}, studioFilter=${studioFilter}, yearFilter=${yearFilter}, timePeriodFilter=${timePeriodFilter}`);
 
-  // Determine the sort order to pass to scrapers
-  // 'date' sortType (hentai-monthly, hentai-weekly) should use 'recent' sorting
-  // This fetches from /episodes which is already sorted by date
-  const scraperSortBy = (sortType === 'date') ? 'recent' : 'popular';
-
+  // Extract pagination params early
+  const skip = parseInt(extra.skip) || 0;
+  const limit = parseInt(extra.limit) || 20;
+  const extraGenre = extra.genre || null;
+  
+  // Clean genre name (remove count suffix like " (1737)")
+  const cleanGenre = extraGenre ? extraGenre.replace(/\s*\(\d+\)$/, '').trim() : null;
+  
   // Extract genre from catalog ID (e.g., 'hentaimama-genre-uncensored')
   const catalogGenreMatch = id.match(/^hentaimama-genre-(.+)$/);
   const catalogGenre = catalogGenreMatch ? catalogGenreMatch[1] : null;
   
-  // Also check for genre in extra parameters (from filter dropdown)
-  // Note: Stremio uses 'genre' parameter for all dropdown filters (genres, studios, years)
-  const extraGenre = extra.genre || null;
+  // For database: use clean genre name (for matching against item.genres array)
+  // For scrapers: convert to slug (for URL construction)
+  const genreForDatabase = (studioFilter || yearFilter || timePeriodFilter) ? null : cleanGenre;
+  const genreSlugForScrapers = (studioFilter || yearFilter || timePeriodFilter) ? catalogGenre : (cleanGenre ? genreNameToSlug(cleanGenre) : catalogGenre);
   
-  // Use extra genre if provided, otherwise use catalog genre
-  // For studios/years catalogs, don't use genre for source fetching - filter locally instead
-  // Use genreNameToSlug() to properly map display names to URL slugs
-  const genre = (studioFilter || yearFilter) ? catalogGenre : (extraGenre ? genreNameToSlug(extraGenre) : catalogGenre);
+  // ============================================================
+  // DATABASE-FIRST: Use pre-bundled database for all catalogs
+  // For "new releases": use time period filter from genre dropdown
+  // ============================================================
   
-  if (extraGenre && genre !== extraGenre.toLowerCase().replace(/\s+/g, '-')) {
-    logger.info(`Genre slug mapped: "${extraGenre}" → "${genre}"`);
+  // Determine if this is a New Releases catalog with time period filter
+  const timePeriod = timePeriodFilter ? parseTimePeriod(extraGenre) : null;
+  const effectiveFilterType = filterType || timePeriod;
+  const isNewReleases = filterType === 'weekly' || timePeriodFilter;
+  
+  if (isDatabaseReady()) {
+    const dbSortBy = sortType === 'date' ? 'recent' : (sortType === 'rating' ? 'rating' : 'popular');
+    
+    // For new releases, we need to:
+    // 1. Get fresh content from scrapers (only content newer than database)
+    // 2. Merge with database content (sorted by date)
+    // 3. Apply time filter on the merged results
+    
+    if (isNewReleases) {
+      return await handleNewReleasesCatalog(id, effectiveFilterType, skip, limit, null, userConfig);
+    }
+    
+    // Extract clean studio/year from extraGenre if this is a studio/year filter catalog
+    let studioParam = null;
+    let yearParam = null;
+    
+    if (studioFilter && extraGenre) {
+      // Remove count suffix like " (91)" from "Vanilla (91)"
+      studioParam = extraGenre.replace(/\s*\(\d+\)$/, '').trim();
+    }
+    
+    if (yearFilter && extraGenre) {
+      // Extract year from "2024 (92)" format
+      const yearMatch = extraGenre.match(/^(\d{4})/);
+      yearParam = yearMatch ? yearMatch[1] : null;
+    }
+    
+    // Try database for catalog data
+    // Pass studio/year to filter BEFORE pagination for correct results
+    const dbItems = getCatalogFromDatabase({
+      provider: null, // All providers for aggregated catalogs
+      genre: genreForDatabase,
+      studio: studioParam,  // Filter by studio before pagination
+      year: yearParam,      // Filter by year before pagination  
+      skip: skip,
+      limit: limit + 5, // Fetch a few extra for user blacklist filtering
+      sortBy: dbSortBy
+    });
+    
+    if (dbItems && dbItems.length > 0) {
+      logger.info(`📦 Database hit: ${dbItems.length} items (skip=${skip}, limit=${limit}${studioParam ? ', studio=' + studioParam : ''}${yearParam ? ', year=' + yearParam : ''})`);
+      
+      // Apply user filters (blacklist only - studio/year already applied in database query)
+      let filteredItems = dbItems;
+      
+      // Apply user blacklist
+      filteredItems = filteredItems.filter(item => shouldIncludeSeries(item, userConfig));
+      
+      // Apply sorting
+      filteredItems = applySorting(filteredItems, sortType);
+      
+      // Convert to Stremio meta format
+      const metas = filteredItems.slice(0, limit).map(formatSeriesMeta);
+      
+      logger.info(`📦 Returning ${metas.length} items from database`);
+      return { metas };
+    } else {
+      logger.debug('Database miss or empty, falling back to scrapers');
+    }
   }
+  
+  // ============================================================
+  // SCRAPER FALLBACK: For database miss (shouldn't happen often)
+  // ============================================================
+  logger.info(`🔍 Using scrapers for catalog: ${id} (fallback - database not ready or empty)`);
 
-  const skip = parseInt(extra.skip) || 0;
-  const limit = parseInt(extra.limit) || 20; // Use Stremio's requested limit (usually 20)
+  // Determine the sort order to pass to scrapers
+  const scraperSortBy = (sortType === 'date') ? 'recent' : 'popular';
   
   logger.info(`Request: skip=${skip}, limit=${limit}`);
   
@@ -403,7 +633,7 @@ async function catalogHandler(args) {
   } else {
     baseCatalogId = id;
   }
-  const catalogCacheKey = cache.key('catalog', `${baseCatalogId}:${genre || 'all'}:accumulated`);
+  const catalogCacheKey = cache.key('catalog', `${baseCatalogId}:${genreSlugForScrapers || 'all'}:accumulated`);
   
   // Get or create the accumulated series cache
   let catalogData = await cache.wrap(catalogCacheKey, ttl, async () => {
@@ -468,8 +698,8 @@ async function catalogHandler(args) {
                   );
                 }
               }
-            } else if (genre) {
-              newSeries = await scraperInstance.getCatalogByGenre(genre, catalogData.nextPage);
+            } else if (genreSlugForScrapers) {
+              newSeries = await scraperInstance.getCatalogByGenre(genreSlugForScrapers, catalogData.nextPage);
             } else {
               newSeries = await scraperInstance.getCatalog(catalogData.nextPage, null, scraperSortBy);
             }
@@ -495,8 +725,8 @@ async function catalogHandler(args) {
           newSeries = await scraper.getCatalogByYear(extraGenre, catalogData.nextPage);
         } else if (studioFilter && extraGenre && typeof scraper.getCatalogByStudio === 'function') {
           newSeries = await scraper.getCatalogByStudio(extraGenre, catalogData.nextPage);
-        } else if (genre) {
-          newSeries = await scraper.getCatalogByGenre(genre, catalogData.nextPage);
+        } else if (genreSlugForScrapers) {
+          newSeries = await scraper.getCatalogByGenre(genreSlugForScrapers, catalogData.nextPage);
         } else {
           newSeries = await scraper.getCatalog(catalogData.nextPage, null, scraperSortBy);
         }
@@ -618,13 +848,17 @@ async function catalogHandler(args) {
   }
   
   // Apply time-based filtering (weekly/monthly)
-  // If we're already fetching from a date-sorted source (scraperSortBy === 'recent'),
-  // skip strict filtering since the source already provides recent content
-  const alreadyDateSorted = (scraperSortBy === 'recent');
+  // ALWAYS apply strict date filtering for time-based catalogs
+  // Items must have lastUpdated within the time window
   if (filterType) {
     const beforeFilter = workingSet.length;
-    workingSet = applyTimeFilter(workingSet, filterType, alreadyDateSorted);
+    workingSet = applyTimeFilter(workingSet, filterType);
     logger.info(`Time filter (${filterType}): ${beforeFilter} → ${workingSet.length} items`);
+    
+    // If filtering removed too many items, log warning
+    if (workingSet.length === 0 && beforeFilter > 0) {
+      logger.warn(`Time filter (${filterType}) removed all ${beforeFilter} items - items may be missing lastUpdated field`);
+    }
   }
   
   // Studio/Year filtering is now done at source level via dedicated URLs
@@ -656,57 +890,9 @@ async function catalogHandler(args) {
     logger.info(`Blacklist filter: ${beforeBlacklist} → ${workingSet.length} items`);
   }
 
-  // Now slice the exact items requested
+  // Now slice the exact items requested and format using shared helper
   const result = workingSet.slice(skip, skip + limit);
-  
-  // Format catalog items with proper Stremio fields
-  const formattedResult = result.map(series => {
-    const formatted = { ...series };
-    
-    // IMPORTANT: For Stremio to display metas properly, we need type='series'
-    // The catalog type can be 'hentai' but metas must use official types
-    formatted.type = 'series';
-    
-    // Use runtime field for rating display (to avoid IMDb logo)
-    // Only show rating if it's not the default 6.0 (items without views/ratings)
-    if (series.rating !== null && series.rating !== undefined && !isNaN(series.rating) && series.rating !== 6.0) {
-      formatted.runtime = `★ ${series.rating.toFixed(1)}`;
-    }
-    
-    // releaseInfo should only contain year
-    if (series.year) {
-      formatted.releaseInfo = series.year.toString();
-    }
-    
-    // Ensure genres array is passed through (for backwards compatibility)
-    // But we also need to put genres in links for display (Stremio ignores genres when links is present)
-    const genres = (series.genres && Array.isArray(series.genres) && series.genres.length > 0) 
-      ? series.genres 
-      : [];
-    formatted.genres = genres.length > 0 ? genres : undefined;
-    
-    // Build links array with BOTH studio and genres
-    // Stremio ignores genres array when links is present, so we must include both
-    const studioLinks = series.studio ? [{
-      name: series.studio,
-      category: 'Studio',
-      url: `stremio:///search?search=${encodeURIComponent(series.studio)}`
-    }] : [];
-    
-    const genreLinks = genres.map(genre => ({
-      name: genre,
-      category: 'Genres',
-      url: `stremio:///search?search=${encodeURIComponent(genre)}`
-    }));
-    
-    // Combine: genres first, then studio (for display order)
-    const allLinks = [...genreLinks, ...studioLinks];
-    if (allLinks.length > 0) {
-      formatted.links = allLinks;
-    }
-    
-    return formatted;
-  });
+  const formattedResult = result.map(formatSeriesMeta);
   
   logger.info(`📤 Returning ${formattedResult.length} items (total cached: ${catalogData.series.length}, filtered: ${workingSet.length})`);
   
@@ -715,26 +901,37 @@ async function catalogHandler(args) {
 
 /**
  * Handle search queries
- * Supports: tag search, keyword search, title search
+ * ALWAYS searches database first (fast, case-insensitive, relevance-scored)
+ * Falls back to scrapers only if database has no results
  */
 async function handleSearch(catalogId, query, userConfig = DEFAULT_CONFIG) {
   // Normalize query to lowercase for case-insensitive search
   const normalizedQuery = query.toLowerCase().trim();
-  logger.info(`Search request: "${query}" → normalized: "${normalizedQuery}" in catalog ${catalogId}`);
+  logger.info(`🔍 Search request: "${query}" → normalized: "${normalizedQuery}" in catalog ${catalogId}`);
   
   const ttl = 900; // 15-minute cache for search results
   
   // Cache key for search results (uses normalized query)
   const searchCacheKey = cache.key('search', `${catalogId}:${normalizedQuery}`);
   
-  // Determine if this is an aggregated catalog search
-  // All hentai-* catalogs are aggregated
-  const isAggregatedCatalog = catalogId === 'hentai' || 
-                              catalogId.startsWith('hentai-') ||
-                              catalogId === 'hentaistream-all' || 
-                              catalogId.includes('aggregated');
-  
   const results = await cache.wrap(searchCacheKey, ttl, async () => {
+    // STEP 1: Always try database search first (instant, relevance-scored)
+    const dbResults = searchDatabase(normalizedQuery, { limit: 100 });
+    
+    if (dbResults && dbResults.length > 0) {
+      logger.info(`📚 Database search "${normalizedQuery}" found ${dbResults.length} results (using database)`);
+      return dbResults;
+    }
+    
+    // STEP 2: Fall back to scrapers if database has no results
+    logger.info(`📡 Database had no results for "${normalizedQuery}", falling back to scrapers`);
+    
+    // Determine if this is an aggregated catalog search
+    const isAggregatedCatalog = catalogId === 'hentai' || 
+                                catalogId.startsWith('hentai-') ||
+                                catalogId === 'hentaistream-all' || 
+                                catalogId.includes('aggregated');
+    
     if (isAggregatedCatalog) {
       // Search across enabled providers in parallel
       const scrapers = getAllScrapers(userConfig);
@@ -764,7 +961,7 @@ async function handleSearch(catalogId, query, userConfig = DEFAULT_CONFIG) {
       // Aggregate and deduplicate search results
       const aggregatedResults = aggregateCatalogs(providerResults);
       
-      logger.info(`Aggregated search "${normalizedQuery}" returned ${aggregatedResults.length} results from ${providerResults.length} providers`);
+      logger.info(`📡 Scraper search "${normalizedQuery}" returned ${aggregatedResults.length} results from ${providerResults.length} providers`);
       return aggregatedResults;
     } else {
       // Single provider search
@@ -773,7 +970,7 @@ async function handleSearch(catalogId, query, userConfig = DEFAULT_CONFIG) {
     }
   });
   
-  logger.info(`Search "${normalizedQuery}" returned ${results.length} results`);
+  logger.info(`✅ Search "${normalizedQuery}" returning ${results.length} results`);
   
   // Apply user's blacklist filters
   let filteredResults = results;
@@ -782,11 +979,8 @@ async function handleSearch(catalogId, query, userConfig = DEFAULT_CONFIG) {
     logger.info(`Search blacklist filter: ${results.length} → ${filteredResults.length} items`);
   }
   
-  // Ensure search results have type='series' for Stremio compatibility
-  const formattedResults = filteredResults.map(item => ({
-    ...item,
-    type: 'series'
-  }));
+  // Ensure search results are properly formatted for Stremio
+  const formattedResults = filteredResults.map(formatSeriesMeta);
   
   return { metas: formattedResults };
 }

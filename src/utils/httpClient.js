@@ -375,6 +375,91 @@ async function parallelFetch(urls, options = {}) {
 }
 
 /**
+ * Bulk fetch URLs optimized for database building
+ * Uses undici with connection pooling, lower concurrency to avoid overwhelming servers
+ * 
+ * @param {string[]} urls - Array of URLs to fetch
+ * @param {object} options - Request options
+ * @param {number} options.concurrency - Max concurrent requests (default: 5)
+ * @param {number} options.timeout - Request timeout in ms (default: 15000)
+ * @param {number} options.delayBetween - Delay between requests in ms (default: 100)
+ * @param {number} options.retries - Number of retries per URL (default: 2)
+ * @returns {Promise<Array<{url: string, data: string|null, status: number, success: boolean, error?: string}>>}
+ */
+async function bulkFetchForDatabase(urls, options = {}) {
+  const {
+    concurrency = 5,      // Conservative for WordPress sites
+    timeout = 15000,      // 15 second timeout (research says 15-30s is good)
+    delayBetween = 100,   // 100ms between requests
+    retries = 2,          // Retry failed requests twice
+  } = options;
+
+  const limit = pLimit(concurrency);
+  const results = [];
+  let completedCount = 0;
+  const totalCount = urls.length;
+
+  logger.info(`[HttpClient] Bulk fetch starting: ${totalCount} URLs (concurrency: ${concurrency}, timeout: ${timeout}ms)`);
+
+  // Create a dedicated pool for this batch operation with optimal settings
+  const { request } = require('undici');
+
+  async function fetchWithRetry(url, attempt = 1) {
+    try {
+      const urlObj = new URL(url);
+      const pool = getPool(urlObj.origin);
+
+      const { statusCode, body } = await pool.request({
+        path: urlObj.pathname + urlObj.search,
+        method: 'GET',
+        headers: buildHeaders(),
+        bodyTimeout: timeout,
+        headersTimeout: timeout,
+      });
+
+      const data = await body.text();
+      return { url, data, status: statusCode, success: statusCode >= 200 && statusCode < 400 };
+    } catch (error) {
+      if (attempt < retries) {
+        // Wait before retry with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        return fetchWithRetry(url, attempt + 1);
+      }
+      return { url, data: null, status: 0, success: false, error: error.message };
+    }
+  }
+
+  // Process URLs with controlled concurrency and delays
+  const promises = urls.map((url, index) =>
+    limit(async () => {
+      // Add small delay between requests to avoid bursts
+      if (index > 0 && delayBetween > 0) {
+        await new Promise(resolve => setTimeout(resolve, delayBetween));
+      }
+
+      const result = await fetchWithRetry(url);
+      completedCount++;
+
+      // Log progress every 50 URLs
+      if (completedCount % 50 === 0 || completedCount === totalCount) {
+        const successRate = results.filter(r => r.success).length;
+        logger.info(`[HttpClient] Bulk fetch progress: ${completedCount}/${totalCount} (${successRate} successful so far)`);
+      }
+
+      return result;
+    })
+  );
+
+  const fetchResults = await Promise.all(promises);
+  
+  const successCount = fetchResults.filter(r => r.success).length;
+  const failCount = fetchResults.filter(r => !r.success).length;
+  logger.info(`[HttpClient] Bulk fetch complete: ${successCount} successful, ${failCount} failed out of ${totalCount}`);
+
+  return fetchResults;
+}
+
+/**
  * Pre-warm DNS for known hosts (call on startup)
  */
 async function prewarmConnections() {
@@ -425,6 +510,7 @@ module.exports = {
   fetchViaProxy,
   batchFetch,
   parallelFetch,
+  bulkFetchForDatabase,
   prewarmConnections,
   closeAll,
   buildHeaders,

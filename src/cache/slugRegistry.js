@@ -3,15 +3,25 @@
  * 
  * This solves the problem where HentaiTV (and other providers) have unpredictable
  * episode slug formats. Instead of guessing with multiple variations, we:
- * 1. Store real slugs when we discover them during catalog fetch
- * 2. Look them up during stream fetch for instant O(1) access
+ * 1. CHECK DATABASE FIRST - Pre-bundled slugs are instant (no disk I/O)
+ * 2. Fall back to runtime discovery for new content not in database
+ * 3. Store discovered slugs in memory + disk for persistence
  * 
- * The registry persists to disk so it survives server restarts.
+ * With the pre-bundled database, most lookups hit the database and skip disk entirely.
  */
 
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+
+// Lazy load databaseLoader to avoid circular dependency
+let databaseLoader = null;
+function getDatabase() {
+  if (!databaseLoader) {
+    databaseLoader = require('../utils/databaseLoader');
+  }
+  return databaseLoader;
+}
 
 class SlugRegistry {
   constructor() {
@@ -23,11 +33,18 @@ class SlugRegistry {
     this.cacheDir = process.env.CACHE_DIR || path.join(process.cwd(), '.cache');
     this.diskFile = path.join(this.cacheDir, 'slug-registry.json');
     
-    // Load from disk on startup
+    // Database mode: when true, skip disk operations (database has all slugs)
+    this.databaseMode = false;
+    
+    // Load from disk on startup (only if not in database mode)
     this.loadFromDisk();
     
-    // Periodic save to disk (every 5 minutes)
-    this.saveInterval = setInterval(() => this.saveToDisk(), 5 * 60 * 1000);
+    // Periodic save to disk (every 5 minutes) - only if not in database mode
+    this.saveInterval = setInterval(() => {
+      if (!this.databaseMode) {
+        this.saveToDisk();
+      }
+    }, 5 * 60 * 1000);
     
     // Stats for debugging
     this.stats = {
@@ -35,6 +52,24 @@ class SlugRegistry {
       misses: 0,
       stores: 0
     };
+  }
+  
+  /**
+   * Enable database mode - disables disk operations since database has all slugs
+   */
+  enableDatabaseMode() {
+    this.databaseMode = true;
+    logger.info('[SlugRegistry] Database mode enabled - disk operations disabled');
+    
+    // Clean up disk file if it exists
+    try {
+      if (fs.existsSync(this.diskFile)) {
+        fs.unlinkSync(this.diskFile);
+        logger.debug('[SlugRegistry] Removed disk cache file (database mode)');
+      }
+    } catch (err) {
+      logger.debug(`[SlugRegistry] Could not remove disk file: ${err.message}`);
+    }
   }
 
   /**
@@ -97,6 +132,7 @@ class SlugRegistry {
 
   /**
    * Get a real episode slug
+   * Priority: 1) Memory cache 2) Pre-bundled database 3) null (miss)
    * @param {string} provider - Provider prefix
    * @param {string} seriesSlug - Normalized series slug
    * @param {number|string} episodeNum - Episode number
@@ -104,16 +140,51 @@ class SlugRegistry {
    */
   get(provider, seriesSlug, episodeNum) {
     const key = this.makeKey(provider, seriesSlug, episodeNum);
-    const realSlug = this.cache.get(key);
     
-    if (realSlug) {
+    // 1. Check runtime memory cache first (fastest)
+    const memorySlug = this.cache.get(key);
+    if (memorySlug) {
       this.stats.hits++;
-      logger.debug(`[SlugRegistry] HIT: ${key} -> ${realSlug}`);
-      return realSlug;
+      logger.debug(`[SlugRegistry] MEMORY HIT: ${key} -> ${memorySlug}`);
+      return memorySlug;
+    }
+    
+    // 2. Check pre-bundled database (no disk I/O, very fast)
+    const dbSlug = this._getFromDatabase(provider, seriesSlug, episodeNum);
+    if (dbSlug) {
+      this.stats.hits++;
+      // Also store in memory for faster future lookups
+      this.cache.set(key, dbSlug);
+      logger.debug(`[SlugRegistry] DB HIT: ${key} -> ${dbSlug}`);
+      return dbSlug;
     }
     
     this.stats.misses++;
     return null;
+  }
+  
+  /**
+   * Get slug from pre-bundled database
+   * @private
+   */
+  _getFromDatabase(provider, seriesSlug, episodeNum) {
+    try {
+      const db = getDatabase();
+      if (!db.isReady()) return null;
+      
+      // Build the series ID for database lookup
+      const seriesId = `${provider}-${seriesSlug}`;
+      const item = db.getById(seriesId);
+      
+      if (item && item.knownSlugs && item.knownSlugs[episodeNum]) {
+        return item.knownSlugs[episodeNum];
+      }
+      
+      return null;
+    } catch (error) {
+      logger.debug(`[SlugRegistry] DB lookup error: ${error.message}`);
+      return null;
+    }
   }
 
   /**
@@ -150,9 +221,21 @@ class SlugRegistry {
 
   /**
    * Load registry from disk
+   * Note: With pre-bundled database, disk cache is mainly for NEW content
+   * discovered after the database was built. Most lookups hit the database.
    */
   loadFromDisk() {
+    // Skip disk loading if in database mode
+    if (this.databaseMode) {
+      logger.info('[SlugRegistry] Skipping disk load (database mode)');
+      return;
+    }
+    
     try {
+      // Check if database is ready - if so, disk loading is less critical
+      const db = getDatabase();
+      const dbReady = db.isReady();
+      
       if (fs.existsSync(this.diskFile)) {
         const data = JSON.parse(fs.readFileSync(this.diskFile, 'utf8'));
         
@@ -160,8 +243,10 @@ class SlugRegistry {
           for (const [key, value] of Object.entries(data)) {
             this.cache.set(key, value);
           }
-          logger.info(`[SlugRegistry] Loaded ${this.cache.size} slugs from disk`);
+          logger.info(`[SlugRegistry] Loaded ${this.cache.size} runtime slugs from disk${dbReady ? ' (database has pre-bundled slugs)' : ''}`);
         }
+      } else if (dbReady) {
+        logger.info(`[SlugRegistry] No disk cache, but database has pre-bundled slugs ready`);
       }
     } catch (error) {
       logger.warn(`[SlugRegistry] Failed to load from disk: ${error.message}`);
@@ -172,6 +257,12 @@ class SlugRegistry {
    * Save registry to disk
    */
   saveToDisk() {
+    // Skip disk saving if in database mode
+    if (this.databaseMode) {
+      logger.debug('[SlugRegistry] Skipping disk save (database mode)');
+      return;
+    }
+    
     try {
       // Ensure cache directory exists
       if (!fs.existsSync(this.cacheDir)) {
@@ -211,11 +302,14 @@ class SlugRegistry {
   }
 
   /**
-   * Shutdown - save to disk
+   * Shutdown - save to disk (only if not in database mode)
    */
   shutdown() {
     clearInterval(this.saveInterval);
-    this.saveToDisk();
+    // Only save to disk if not in database mode
+    if (!this.databaseMode) {
+      this.saveToDisk();
+    }
   }
 }
 

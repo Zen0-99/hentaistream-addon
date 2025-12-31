@@ -24,8 +24,15 @@ class CacheManager {
     // Track pending background refreshes to prevent duplicate fetches
     this.pendingRefreshes = new Map();
     
-    // TTL multipliers for disk cache (longer than memory)
-    this.diskTTLMultiplier = 24; // Disk cache lives 24x longer than memory
+    // TTL multipliers for disk cache (reduced since database has base data)
+    // With pre-bundled database, disk cache is mainly for:
+    // - New releases not in database
+    // - Fresh metadata lookups
+    // - Episode streams
+    this.diskTTLMultiplier = 6; // Disk cache lives 6x longer than memory (was 24x)
+    
+    // Database mode: when true, skip disk cache entirely (database has all data)
+    this.databaseMode = false;
     
     // Initialize disk cache directory
     this._initDiskCache();
@@ -34,9 +41,59 @@ class CacheManager {
   }
   
   /**
+   * Enable database mode - disables disk caching since database has all data
+   * Call this when the pre-bundled database is ready
+   */
+  enableDatabaseMode() {
+    this.databaseMode = true;
+    this.diskEnabled = false;
+    logger.info('[Cache] Database mode enabled - disk cache disabled (database has all data)');
+    
+    // Clean up .cache directory if it exists (was created before database mode enabled)
+    this._cleanupCacheDir().catch(err => {
+      logger.debug(`[Cache] Could not cleanup cache dir: ${err.message}`);
+    });
+  }
+  
+  /**
+   * Cleanup the .cache directory when in database mode
+   */
+  async _cleanupCacheDir() {
+    try {
+      const fsSync = require('fs');
+      if (fsSync.existsSync(this.cacheDir)) {
+        const files = await fs.readdir(this.cacheDir);
+        // Only delete if empty or only has our files
+        for (const file of files) {
+          const filePath = path.join(this.cacheDir, file);
+          await fs.unlink(filePath);
+        }
+        await fs.rmdir(this.cacheDir);
+        logger.info('[Cache] Cleaned up .cache directory (database mode)');
+      }
+    } catch (err) {
+      // Directory not empty or other error, ignore
+      logger.debug(`[Cache] Could not remove .cache dir: ${err.message}`);
+    }
+  }
+  
+  /**
+   * Check if database mode is enabled
+   */
+  isDatabaseMode() {
+    return this.databaseMode;
+  }
+  
+  /**
    * Initialize disk cache directory and cleanup old entries
    */
   async _initDiskCache() {
+    // Skip disk cache initialization if in database mode
+    if (this.databaseMode) {
+      logger.info('[Cache] Skipping disk cache init (database mode)');
+      return;
+    }
+    
     try {
       await fs.mkdir(this.cacheDir, { recursive: true });
       

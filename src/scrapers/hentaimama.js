@@ -565,6 +565,20 @@ class HentaiMamaScraper {
             genres.push(genreText);
           }
         });
+        
+        // Extract date from article if available (for time filtering)
+        // HentaiMama shows dates in various formats on episode cards
+        let articleDate = null;
+        const dateElem = $elem.find('.date, time, .post-date, .meta-date').first();
+        if (dateElem.length) {
+          const dateText = dateElem.attr('datetime') || dateElem.text().trim();
+          if (dateText) {
+            const parsed = parseDate(dateText);
+            if (parsed) {
+              articleDate = parsed;
+            }
+          }
+        }
 
         // Group by series
         if (!seriesMap.has(seriesSlug)) {
@@ -577,13 +591,18 @@ class HentaiMamaScraper {
             type: 'series',
             episodes: [],
             latestEpisode: episodeNumber,
-            isSeriesPage: isSeriesPage // Track if we found this via series page
+            isSeriesPage: isSeriesPage, // Track if we found this via series page
+            lastUpdated: articleDate // Set initial date from article if available
           });
         } else {
           // Update latest episode number
           const series = seriesMap.get(seriesSlug);
           if (episodeNumber > series.latestEpisode) {
             series.latestEpisode = episodeNumber;
+          }
+          // Update lastUpdated if we found a more recent date
+          if (articleDate && (!series.lastUpdated || articleDate > series.lastUpdated)) {
+            series.lastUpdated = articleDate;
           }
         }
         
@@ -665,17 +684,39 @@ class HentaiMamaScraper {
             }
           }
           
-          // Extract lastUpdated from article meta for weekly/monthly filtering
-          // Try modified time first (more relevant), then published time
-          const modifiedTime = $series('meta[property="article:modified_time"]').attr('content');
-          const publishedTime = $series('meta[property="article:published_time"]').attr('content');
-          const metaDate = modifiedTime || publishedTime;
-          if (metaDate) {
-            const fullDate = parseDate(metaDate);
-            if (fullDate) {
-              series.lastUpdated = fullDate;
-              logger.debug(`[HentaiMama] Found lastUpdated ${fullDate} for ${series.name}`);
+          // Extract lastUpdated (Last air date) for monthly filtering
+          // Priority: 1. "Last air date" from custom_fields, 2. article:modified_time meta
+          let lastAirDate = null;
+          
+          // First try: Look for "Last air date" in custom_fields
+          // HTML structure: <div class="custom_fields"><b class="variante">Last air date</b><span class="valor">Dec. 27, 2025</span></div>
+          $series('div.custom_fields').each((i, cfEl) => {
+            const $cf = $series(cfEl);
+            const label = $cf.find('b.variante').text().trim();
+            if (label === 'Last air date') {
+              const dateValue = $cf.find('span.valor').text().trim();
+              if (dateValue) {
+                lastAirDate = parseDate(dateValue);
+                logger.debug(`[HentaiMama] Found "Last air date" = ${dateValue} → parsed: ${lastAirDate}`);
+              }
+              return false; // Break
             }
+          });
+          
+          // Fallback: Try article meta tags
+          if (!lastAirDate) {
+            const modifiedTime = $series('meta[property="article:modified_time"]').attr('content');
+            const publishedTime = $series('meta[property="article:published_time"]').attr('content');
+            const metaDate = modifiedTime || publishedTime;
+            if (metaDate) {
+              lastAirDate = parseDate(metaDate);
+              logger.debug(`[HentaiMama] Fallback: article meta date = ${metaDate} → parsed: ${lastAirDate}`);
+            }
+          }
+          
+          if (lastAirDate) {
+            series.lastUpdated = lastAirDate;
+            logger.debug(`[HentaiMama] Found lastUpdated ${lastAirDate} for ${series.name}`);
           }
           
           // Extract rating from series page (DooPlay theme)
@@ -1279,6 +1320,53 @@ class HentaiMamaScraper {
       }
       
       logger.info(`Found ${episodes.length} episodes for ${seriesSlug}`);
+      
+      // ===== FETCH EPISODE DATES =====
+      // The series page has WRONG dates (today's date), but episode pages have correct dates
+      // Fetch first 5 episode pages to get their actual release dates
+      let seriesLastUpdated = null;
+      const episodesToFetchDates = episodes.slice(0, 5); // Limit to avoid too many requests
+      
+      if (episodesToFetchDates.length > 0) {
+        logger.info(`[HentaiMama] Fetching dates for ${episodesToFetchDates.length} episodes...`);
+        
+        for (const ep of episodesToFetchDates) {
+          try {
+            const epUrl = `${this.baseUrl}/episodes/${ep.slug}`;
+            const epResponse = await this.makeRequest(epUrl, { timeout: 5000 });
+            const $ep = cheerio.load(epResponse.data);
+            
+            // Extract date from episode page's .date element
+            const epDateText = $ep('.date, span.date').first().text().trim();
+            if (epDateText) {
+              const parsedDate = parseDate(epDateText);
+              if (parsedDate) {
+                // parseDate returns ISO string directly, not a Date object
+                ep.released = typeof parsedDate === 'string' ? parsedDate : parsedDate.toISOString();
+                logger.debug(`[HentaiMama] Episode ${ep.number} date: ${epDateText} → ${ep.released}`);
+                
+                // Track the latest episode date for series lastUpdated
+                const dateObj = new Date(parsedDate);
+                if (!seriesLastUpdated || dateObj > seriesLastUpdated) {
+                  seriesLastUpdated = dateObj;
+                }
+              }
+            }
+            
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (err) {
+            logger.debug(`[HentaiMama] Could not fetch date for episode ${ep.number}: ${err.message}`);
+          }
+        }
+        
+        // For episodes beyond the first 5, we don't have dates
+        // They will show without a date in Stremio
+        
+        if (seriesLastUpdated) {
+          logger.info(`[HentaiMama] Series lastUpdated from episodes: ${seriesLastUpdated.toISOString()}`);
+        }
+      }
 
       // Filter out studio from genres (HentaiMama marks studios with same rel="tag" as genres)
       const filteredGenres = genres.filter(g => 
@@ -1301,6 +1389,15 @@ class HentaiMamaScraper {
       // This ensures metadata is consistent even when catalog used a derived/guessed slug
       const correctId = `hmm-${seriesSlug}`;
       
+      // Determine releaseInfo: use earliest episode date's year if available, fallback to series page
+      let finalReleaseInfo = releaseInfo;
+      if (episodes.length > 0 && episodes[0].released) {
+        const firstEpYear = extractYear(episodes[0].released);
+        if (firstEpYear) {
+          finalReleaseInfo = String(firstEpYear);
+        }
+      }
+      
       return {
         id: correctId,
         originalId: seriesId, // Keep original for reference/debugging
@@ -1312,7 +1409,8 @@ class HentaiMamaScraper {
         genres: filteredGenres.length > 0 ? filteredGenres : ['Hentai'],
         studio: studio,
         type: 'series',
-        releaseInfo,
+        releaseInfo: finalReleaseInfo,
+        lastUpdated: seriesLastUpdated ? seriesLastUpdated.toISOString() : undefined,
         episodes: episodes
       };
 

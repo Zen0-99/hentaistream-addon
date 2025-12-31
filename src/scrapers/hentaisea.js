@@ -242,18 +242,25 @@ class HentaiSeaScraper extends BaseScraper {
       // ===== OPTIMIZED BATCH METADATA FETCHING =====
       // Use axios (this.client) with Promise.allSettled for parallel fetching
       // Axios follows redirects properly unlike undici, which is required for HentaiSea
-      const maxMetadataFetch = 20;
+      const maxMetadataFetch = 30;  // Fetch ALL items on the page (typically 30 per page)
       const itemsToFetch = items.slice(0, maxMetadataFetch);
       
       if (itemsToFetch.length > 0) {
         logger.info(`[HentaiSea] Batch fetching metadata for ${itemsToFetch.length} trending items...`);
         const startTime = Date.now();
         
-        // Parallel fetch all series pages using axios (follows redirects)
-        const fetchPromises = itemsToFetch.map(item => 
-          this.client.get(`${this.baseUrl}/watch/${item.slug}/`).catch(err => ({ error: err.message }))
-        );
-        const batchResults = await Promise.allSettled(fetchPromises);
+        // Sequential fetch with 100ms delay to avoid rate limiting
+        const batchResults = [];
+        for (const item of itemsToFetch) {
+          try {
+            const response = await this.client.get(`${this.baseUrl}/watch/${item.slug}/`);
+            batchResults.push({ status: 'fulfilled', value: response });
+          } catch (err) {
+            batchResults.push({ status: 'fulfilled', value: { error: err.message } });
+          }
+          // 100ms delay between requests
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
         
         logger.info(`[HentaiSea] Batch fetch completed in ${Date.now() - startTime}ms`);
         
@@ -284,13 +291,50 @@ class HentaiSeaScraper extends BaseScraper {
               if (genres.length > 0) item.genres = genres;
             }
             
-            // Get year from series page (same selector as getMetadata)
+            // Get ACTUAL year from "First air date" field (NOT upload date)
+            // HentaiSea structure: <b>First air date</b> <span class="valor">Jun. 14, 1969</span>
             if (!item.year) {
-              const yearText = $meta('.sheader .data .extra span.date, .date, time').first().text();
-              const yearMatch = yearText.match(/(\d{4})/);
-              if (yearMatch) {
-                item.year = parseInt(yearMatch[1]);
-                item.releaseInfo = String(item.year);
+              // Method 1: Look for b tag with "first air date" and .valor span
+              $meta('b').each((j, el) => {
+                const labelText = $meta(el).text().trim().toLowerCase();
+                if (labelText.includes('first air date')) {
+                  const valorSpan = $meta(el).nextAll('span.valor').first();
+                  const dateText = valorSpan.text().trim();
+                  if (dateText) {
+                    const yearMatch = dateText.match(/(\d{4})/);
+                    if (yearMatch) {
+                      item.year = parseInt(yearMatch[1]);
+                      item.releaseInfo = String(item.year);
+                      logger.debug(`[HentaiSea] Found First air date year: ${item.year} for ${item.name}`);
+                    }
+                  }
+                  return false; // Stop searching
+                }
+              });
+              
+              // Method 2: Fallback - tr elements
+              if (!item.year) {
+                $meta('tr').each((j, el) => {
+                  const rowText = $meta(el).text().trim();
+                  if (rowText.toLowerCase().includes('first air date')) {
+                    const yearMatch = rowText.match(/(\d{4})/);
+                    if (yearMatch) {
+                      item.year = parseInt(yearMatch[1]);
+                      item.releaseInfo = String(item.year);
+                    }
+                    return false;
+                  }
+                });
+              }
+              
+              // Method 3: Fallback - .extra span
+              if (!item.year) {
+                const yearText = $meta('.sheader .data .extra span.date, .date, time').first().text();
+                const yearMatch = yearText.match(/(\d{4})/);
+                if (yearMatch) {
+                  item.year = parseInt(yearMatch[1]);
+                  item.releaseInfo = String(item.year);
+                }
               }
             }
             
@@ -324,6 +368,18 @@ class HentaiSeaScraper extends BaseScraper {
                 return false; // Take first one only
               }
             });
+            
+            // Extract lastUpdated (Last air date) from article meta for monthly filtering
+            const modifiedTime = $meta('meta[property="article:modified_time"]').attr('content');
+            const publishedTime = $meta('meta[property="article:published_time"]').attr('content');
+            const metaDate = modifiedTime || publishedTime;
+            if (metaDate) {
+              const fullDate = parseDate(metaDate);
+              if (fullDate) {
+                item.lastUpdated = fullDate;
+                logger.debug(`[HentaiSea] Found lastUpdated ${fullDate} for ${item.name}`);
+              }
+            }
             
             enrichedCount++;
           } catch (metaErr) {
@@ -419,6 +475,7 @@ class HentaiSeaScraper extends BaseScraper {
             type: 'series',
             name: title,
             poster: poster,
+            slug: slug, // Keep slug for metadata fetch
             description: description,
             genres: genres,
             year: year,
@@ -434,6 +491,122 @@ class HentaiSeaScraper extends BaseScraper {
       });
       
       logger.info(`[HentaiSea] Found ${items.length} items in catalog`);
+      
+      // ===== BATCH METADATA ENRICHMENT =====
+      // Fetch additional metadata from individual series pages (same as getTrending)
+      const maxMetadataFetch = 30;  // Fetch ALL items on the page (typically 30 per page)
+      const itemsToFetch = items.slice(0, maxMetadataFetch);
+      
+      if (itemsToFetch.length > 0) {
+        logger.info(`[HentaiSea] Batch fetching metadata for ${itemsToFetch.length} catalog items...`);
+        const startTime = Date.now();
+        
+        // Sequential fetch with 100ms delay to avoid rate limiting
+        const batchResults = [];
+        for (const item of itemsToFetch) {
+          try {
+            const response = await this.client.get(`${this.baseUrl}/watch/${item.slug}/`);
+            batchResults.push({ status: 'fulfilled', value: response });
+          } catch (err) {
+            batchResults.push({ status: 'fulfilled', value: { error: err.message } });
+          }
+          // 100ms delay between requests
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        logger.info(`[HentaiSea] Batch fetch completed in ${Date.now() - startTime}ms`);
+        
+        // Process results
+        let enrichedCount = 0;
+        for (let i = 0; i < itemsToFetch.length; i++) {
+          const item = itemsToFetch[i];
+          const result = batchResults[i];
+          
+          const response = result.status === 'fulfilled' ? result.value : null;
+          if (!response || response.error || !response.data) {
+            delete item.slug;
+            continue;
+          }
+          
+          try {
+            const $meta = cheerio.load(response.data);
+            
+            // Get genres from series page if missing
+            if (!item.genres || item.genres.length === 0) {
+              const genres = [];
+              $meta('a[rel="tag"]').each((j, tagEl) => {
+                const genre = $meta(tagEl).text().trim();
+                if (genre && !genres.includes(genre)) genres.push(genre);
+              });
+              if (genres.length > 0) item.genres = genres;
+            }
+            
+            // Get year from series page if missing
+            if (!item.year) {
+              const yearText = $meta('.sheader .data .extra span.date, .date, time').first().text();
+              const yearMatch = yearText.match(/(\d{4})/);
+              if (yearMatch) {
+                item.year = parseInt(yearMatch[1]);
+                item.releaseInfo = String(item.year);
+              }
+            }
+            
+            // Get description from series page if missing
+            if (!item.description) {
+              let desc = '';
+              $meta('.wp-content p').each((j, el) => {
+                const text = $meta(el).text().trim();
+                if (text && !text.startsWith('Watch ') && text.length > 50) {
+                  desc = text;
+                  return false;
+                }
+              });
+              if (desc) {
+                if (desc.length > 450) {
+                  desc = desc.substring(0, 450);
+                  const lastSpace = desc.lastIndexOf(' ');
+                  if (lastSpace > 300) desc = desc.substring(0, lastSpace);
+                  desc = desc.trim() + '...';
+                }
+                item.description = desc;
+              }
+            }
+            
+            // Get studio
+            $meta('.sheader .data a[href*="/studio/"], a[href*="/studio/"]').each((j, el) => {
+              const studioText = $meta(el).text().trim();
+              if (studioText && studioText.length > 1 && studioText.length < 50) {
+                item.studio = studioText;
+                return false;
+              }
+            });
+            
+            // Extract lastUpdated from article meta for monthly filtering
+            const modifiedTime = $meta('meta[property="article:modified_time"]').attr('content');
+            const publishedTime = $meta('meta[property="article:published_time"]').attr('content');
+            const metaDate = modifiedTime || publishedTime;
+            if (metaDate) {
+              const fullDate = parseDate(metaDate);
+              if (fullDate) {
+                item.lastUpdated = fullDate;
+              }
+            }
+            
+            enrichedCount++;
+          } catch (metaErr) {
+            logger.debug(`[HentaiSea] Metadata parse error for ${item.name}: ${metaErr.message}`);
+          }
+          
+          // Clean up slug (not needed in final output)
+          delete item.slug;
+        }
+        
+        logger.info(`[HentaiSea] Enriched ${enrichedCount}/${itemsToFetch.length} items with metadata`);
+      }
+      
+      // Clean up remaining slugs
+      items.forEach(item => delete item.slug);
+      
       return items;
       
     } catch (error) {
@@ -445,8 +618,11 @@ class HentaiSeaScraper extends BaseScraper {
   /**
    * Get detailed metadata for a series
    * @param {string} seriesId - Series ID with prefix
+   * @param {Object} options - Options for metadata fetching
+   * @param {boolean} options.skipEpisodeDates - Skip fetching episode dates (faster for bulk builds)
    */
-  async getMetadata(seriesId) {
+  async getMetadata(seriesId, options = {}) {
+    const { skipEpisodeDates = false } = options;
     try {
       const slug = seriesId.replace(this.prefix, '');
       const url = `${this.baseUrl}/watch/${slug}/`;
@@ -507,19 +683,63 @@ class HentaiSeaScraper extends BaseScraper {
         }
       });
       
-      // Get year from date if available
-      const yearText = $('.sheader .data .extra span.date, .date, time').first().text();
-      const yearMatch = yearText.match(/(\d{4})/);
-      const year = yearMatch ? parseInt(yearMatch[1]) : null;
+      // Get ACTUAL release year from "First air date" field (NOT upload date)
+      // HentaiSea structure: <b>First air date</b> <span class="valor">Jun. 14, 1969</span>
+      let year = null;
+      let firstAirDate = null;
+      
+      // Method 1: Look for the specific structure with b tag and .valor span
+      $('b').each((i, el) => {
+        const labelText = $(el).text().trim().toLowerCase();
+        if (labelText.includes('first air date')) {
+          // Get the next .valor span which contains the actual date
+          const valorSpan = $(el).nextAll('span.valor').first();
+          const dateText = valorSpan.text().trim();
+          if (dateText) {
+            firstAirDate = dateText;
+            const yearMatch = dateText.match(/(\d{4})/);
+            if (yearMatch) {
+              year = parseInt(yearMatch[1]);
+              logger.info(`[HentaiSea] Found First air date: "${firstAirDate}", year: ${year}`);
+            }
+          }
+          return false; // Stop searching
+        }
+      });
+      
+      // Method 2: Fallback - try tr elements (for different page layouts)
+      if (!year) {
+        $('tr').each((i, el) => {
+          const rowText = $(el).text().trim();
+          if (rowText.toLowerCase().includes('first air date')) {
+            const yearMatch = rowText.match(/(\d{4})/);
+            if (yearMatch) {
+              year = parseInt(yearMatch[1]);
+              logger.info(`[HentaiSea] Found year from tr: ${year}`);
+            }
+            return false;
+          }
+        });
+      }
+      
+      // Method 3: Fallback - Look for year in .extra span or date/time elements
+      if (!year) {
+        const yearText = $('.sheader .data .extra span.date, .date, time').first().text();
+        const yearMatch = yearText.match(/(\d{4})/);
+        if (yearMatch) {
+          year = parseInt(yearMatch[1]);
+          logger.info(`[HentaiSea] Year from fallback selector: ${year}`);
+        }
+      }
       
       // Extract lastUpdated from article meta for weekly/monthly filtering
-      // Try modified time first (more relevant), then published time
+      // This is when the content was last uploaded/modified, NOT the original air date
       const modifiedTime = $('meta[property="article:modified_time"]').attr('content');
       const publishedTime = $('meta[property="article:published_time"]').attr('content');
       const metaDate = modifiedTime || publishedTime;
       const lastUpdated = metaDate ? parseDate(metaDate) : null;
       if (lastUpdated) {
-        logger.debug(`[HentaiSea] Found lastUpdated ${lastUpdated} for ${title}`);
+        logger.debug(`[HentaiSea] Found lastUpdated (upload) ${lastUpdated} for ${title}`);
       }
       
       // Get episodes
@@ -565,7 +785,30 @@ class HentaiSeaScraper extends BaseScraper {
       // Sort episodes by number
       episodes.sort((a, b) => a.number - b.number);
       
-      logger.info(`[HentaiSea] Found ${episodes.length} episodes for ${title}, studio: ${studio || 'none'}`);
+      // Use "First air date" from series page for ALL episodes (no individual episode fetches needed)
+      // This is the actual release/premiere date, not the upload date
+      let episodeReleaseDate = null;
+      if (firstAirDate) {
+        const parsedFirstAirDate = parseDate(firstAirDate);
+        if (parsedFirstAirDate) {
+          episodeReleaseDate = typeof parsedFirstAirDate === 'string' 
+            ? parsedFirstAirDate 
+            : parsedFirstAirDate.toISOString();
+          logger.info(`[HentaiSea] Using First air date "${firstAirDate}" -> ${episodeReleaseDate} for all ${episodes.length} episodes`);
+        }
+      }
+      
+      // Apply the series release date to all episodes
+      if (episodeReleaseDate) {
+        for (const ep of episodes) {
+          ep.released = episodeReleaseDate;
+        }
+      }
+      
+      // Use firstAirDate for series, fallback to lastUpdated (upload date)
+      const finalLastUpdated = episodeReleaseDate || (lastUpdated ? new Date(lastUpdated).toISOString() : null);
+      
+      logger.info(`[HentaiSea] Found ${episodes.length} episodes for ${title}, studio: ${studio || 'none'}, year: ${year || 'none'}, lastUpdated: ${finalLastUpdated}`);
       
       return {
         id: seriesId,
@@ -577,7 +820,8 @@ class HentaiSeaScraper extends BaseScraper {
         genres: genres,
         studio: studio,
         year: year,
-        lastUpdated: lastUpdated,
+        releaseInfo: year ? String(year) : undefined,  // Show year in releaseInfo for Stremio
+        lastUpdated: finalLastUpdated,
         episodes: episodes
       };
       

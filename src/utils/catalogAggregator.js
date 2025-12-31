@@ -1,6 +1,305 @@
 const logger = require('./logger');
 const ratingNormalizer = require('./ratingNormalizer');
 const { getMostRecentDate } = require('./dateParser');
+const { selectBestDescription, isPromotionalDescription } = require('./descriptionHelper');
+
+// Lazy load database to avoid circular dependencies
+let databaseLoader = null;
+function getDatabase() {
+  if (!databaseLoader) {
+    databaseLoader = require('./databaseLoader');
+  }
+  return databaseLoader;
+}
+
+/**
+ * Get catalog from pre-bundled database
+ * Much faster than scraping - instant load for historical content
+ * 
+ * @param {Object} options - Options for catalog retrieval
+ * @param {string} options.provider - Filter by provider ('hmm', 'hse', 'htv', or null for all)
+ * @param {string} options.genre - Filter by genre
+ * @param {number} options.skip - Items to skip (pagination)
+ * @param {number} options.limit - Items to return
+ * @param {string} options.sortBy - Sort order ('popular', 'recent', 'rating')
+ * @returns {Array|null} Array of series or null if database not ready
+ */
+function getCatalogFromDatabase(options = {}) {
+  const db = getDatabase();
+  if (!db.isReady()) {
+    logger.debug('[Aggregator] Database not ready, will use scrapers');
+    return null;
+  }
+  
+  const { provider = null, genre = null, skip = 0, limit = 30, sortBy = 'popular', studio = null, year = null } = options;
+  
+  // Get base catalog (all or by provider)
+  let items = provider ? db.getByProvider(provider) : db.getCatalog();
+  
+  if (!items || items.length === 0) {
+    return null;
+  }
+  
+  // Filter by genre if specified
+  // Genre comes as display name like "3D", "Action", etc.
+  // Match items where any genre starts with the search term (case-insensitive)
+  // e.g., "3D" matches "3D Hentai", "3D Works", "3d", etc.
+  if (genre) {
+    const genreNormalized = genre.toLowerCase().trim();
+    items = items.filter(item => {
+      if (!item.genres || !Array.isArray(item.genres)) return false;
+      return item.genres.some(g => {
+        const gLower = g.toLowerCase().trim();
+        // Match if genre equals, starts with, or contains the search term
+        return gLower === genreNormalized || 
+               gLower.startsWith(genreNormalized + ' ') || // "3d " matches "3d hentai"
+               gLower.startsWith(genreNormalized + '-');   // "3d-" matches "3d-something"
+      });
+    });
+    logger.debug(`[Aggregator] Genre filter "${genre}" matched ${items.length} items`);
+  }
+  
+  // Filter by studio if specified (BEFORE pagination!)
+  // Use exact match only - "Edge" should NOT match "Edge Systems" or "Etching Edge"
+  if (studio) {
+    const studioLower = studio.toLowerCase().trim();
+    items = items.filter(item => {
+      if (!item.studio) return false;
+      const itemStudio = item.studio.toLowerCase().trim();
+      return itemStudio === studioLower; // EXACT match only
+    });
+    logger.debug(`[Aggregator] Studio filter "${studio}" matched ${items.length} items`);
+  }
+  
+  // Filter by year if specified (BEFORE pagination!)
+  // Includes series with year field OR episodes released in that year
+  if (year) {
+    const targetYear = parseInt(year);
+    if (!isNaN(targetYear)) {
+      items = items.filter(item => {
+        // Check explicit year field (normalize to number - database may have string or number)
+        const itemYear = typeof item.year === 'string' ? parseInt(item.year) : item.year;
+        if (itemYear === targetYear) return true;
+        
+        // Check releaseInfo for year
+        if (item.releaseInfo) {
+          const match = String(item.releaseInfo).match(/(\d{4})/);
+          if (match && parseInt(match[1]) === targetYear) return true;
+        }
+        
+        // Check lastUpdated date year
+        if (item.lastUpdated) {
+          const dateYear = new Date(item.lastUpdated).getFullYear();
+          if (dateYear === targetYear) return true;
+        }
+        
+        // Check episode release dates - include if ANY episode was released in this year
+        if (item.episodes && Array.isArray(item.episodes)) {
+          for (const ep of item.episodes) {
+            if (ep.released) {
+              const epYear = new Date(ep.released).getFullYear();
+              if (epYear === targetYear) return true;
+            }
+          }
+        }
+        
+        return false;
+      });
+      logger.debug(`[Aggregator] Year filter "${targetYear}" matched ${items.length} items`);
+    }
+  }
+  
+  // Sort based on sortBy option
+  switch (sortBy) {
+    case 'recent':
+      items.sort((a, b) => {
+        const dateA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+        const dateB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+        return dateB - dateA;
+      });
+      break;
+    case 'rating':
+      items.sort((a, b) => {
+        const ratingA = a.rating || 0;
+        const ratingB = b.rating || 0;
+        return ratingB - ratingA;
+      });
+      break;
+    case 'popular':
+    default:
+      // Popular = by view count (HTV) or rating (HMM) or metadata score
+      items.sort((a, b) => {
+        // Priority: viewCount > rating > metadataScore
+        const scoreA = (a.viewCount || 0) + (a.rating || 0) * 10000 + (a.metadataScore || 0);
+        const scoreB = (b.viewCount || 0) + (b.rating || 0) * 10000 + (b.metadataScore || 0);
+        return scoreB - scoreA;
+      });
+  }
+  
+  // Apply pagination
+  const result = items.slice(skip, skip + limit);
+  
+  logger.debug(`[Aggregator] Database returned ${result.length} items (skip=${skip}, limit=${limit}, total=${items.length})`);
+  
+  return result;
+}
+
+/**
+ * Get the newest content date from the database
+ * @returns {Date|null}
+ */
+function getNewestDatabaseDate() {
+  const db = getDatabase();
+  if (!db.isReady()) return null;
+  return db.getNewestContentDate();
+}
+
+/**
+ * Get database build date
+ * @returns {Date|null}
+ */
+function getDatabaseBuildDate() {
+  const db = getDatabase();
+  if (!db.isReady()) return null;
+  return db.getBuildDate();
+}
+
+/**
+ * Check if an item is in the pre-bundled database
+ * Used to decide whether to fetch metadata from scrapers
+ * @param {string} id - Series ID
+ * @returns {Object|null} Database item or null
+ */
+function getFromDatabase(id) {
+  const db = getDatabase();
+  if (!db.isReady()) return null;
+  return db.getById(id);
+}
+
+/**
+ * Check if database is available and ready
+ */
+function isDatabaseReady() {
+  const db = getDatabase();
+  return db.isReady();
+}
+
+/**
+ * Search the database with relevance scoring
+ * Partial matches work, but exact/closer matches are scored higher
+ * 
+ * @param {string} query - Search query (will be lowercased)
+ * @param {Object} options - Search options
+ * @param {number} options.limit - Max results to return (default: 50)
+ * @returns {Array} Sorted array of matching series (best matches first)
+ */
+function searchDatabase(query, options = {}) {
+  const db = getDatabase();
+  if (!db.isReady()) {
+    logger.debug('[Aggregator] Database not ready for search');
+    return null;
+  }
+  
+  const { limit = 50 } = options;
+  const queryLower = query.toLowerCase().trim();
+  
+  if (!queryLower) {
+    return [];
+  }
+  
+  // Get all items from database
+  const allItems = db.getCatalog();
+  if (!allItems || allItems.length === 0) {
+    return [];
+  }
+  
+  // Score each item based on how well it matches the query
+  const scored = [];
+  
+  for (const item of allItems) {
+    const name = (item.name || '').toLowerCase();
+    const description = (item.description || '').toLowerCase();
+    const studio = (item.studio || '').toLowerCase();
+    const genres = (item.genres || []).map(g => g.toLowerCase());
+    
+    let score = 0;
+    
+    // TITLE MATCHING (highest priority)
+    if (name === queryLower) {
+      // Exact title match = highest score
+      score += 1000;
+    } else if (name.startsWith(queryLower)) {
+      // Title starts with query (e.g., "mama" matches "mama no tomo")
+      score += 500;
+    } else if (name.includes(queryLower)) {
+      // Title contains query anywhere
+      score += 200;
+    }
+    
+    // WORD-LEVEL MATCHING (for multi-word queries)
+    const queryWords = queryLower.split(/\s+/);
+    const nameWords = name.split(/\s+/);
+    
+    // Check if all query words appear in title (in any order)
+    const allWordsMatch = queryWords.every(qw => 
+      nameWords.some(nw => nw.includes(qw))
+    );
+    if (allWordsMatch && queryWords.length > 1) {
+      score += 150;
+    }
+    
+    // Check for individual word matches
+    for (const qw of queryWords) {
+      if (nameWords.some(nw => nw === qw)) {
+        score += 50; // Exact word match
+      } else if (nameWords.some(nw => nw.startsWith(qw))) {
+        score += 25; // Word starts with query word
+      }
+    }
+    
+    // STUDIO MATCHING (medium priority)
+    if (studio === queryLower) {
+      score += 300;
+    } else if (studio.includes(queryLower)) {
+      score += 100;
+    }
+    
+    // GENRE MATCHING (lower priority)
+    for (const genre of genres) {
+      if (genre === queryLower) {
+        score += 80;
+      } else if (genre.includes(queryLower)) {
+        score += 30;
+      }
+    }
+    
+    // DESCRIPTION MATCHING (lowest priority, just for discovery)
+    if (description.includes(queryLower)) {
+      score += 10;
+    }
+    
+    // Only include items with a score > 0
+    if (score > 0) {
+      scored.push({ item, score });
+    }
+  }
+  
+  // Sort by score (highest first), then by rating as tiebreaker
+  scored.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    // Tiebreaker: higher rated content first
+    return (b.item.rating || 0) - (a.item.rating || 0);
+  });
+  
+  // Return just the items, limited
+  const results = scored.slice(0, limit).map(s => s.item);
+  
+  logger.info(`[Aggregator] Database search "${query}" found ${scored.length} matches, returning top ${results.length}`);
+  
+  return results;
+}
 
 /**
  * Normalize series name for matching across providers
@@ -84,55 +383,14 @@ function isDuplicate(series1, series2) {
 
 /**
  * Calculate weighted average rating from multiple provider ratings
- * Uses ratingNormalizer for proper weighting
+ * Uses priority-based system: HentaiMama > HentaiTV > HentaiSea > N/A
  * @param {Object} ratingBreakdown - Object with provider rating info
  *   Example: { hmm: { raw: 8.6, type: 'direct' }, htv: { raw: 5000, type: 'views' } }
- * @returns {number} Weighted average rating (rounded to 1 decimal)
+ * @returns {Object} { rating: number|null, source: string, isNA: boolean }
  */
 function calculateAverageRating(ratingBreakdown) {
-  if (!ratingBreakdown || typeof ratingBreakdown !== 'object') {
-    return ratingNormalizer.CONFIG.DEFAULT_RATING;
-  }
-  
-  // Convert old format (just numbers) to new format if needed
-  const normalizedBreakdown = {};
-  
-  for (const [provider, data] of Object.entries(ratingBreakdown)) {
-    if (data === null || data === undefined) continue;
-    
-    // Handle old format (just a number) vs new format (object with raw/type)
-    if (typeof data === 'number') {
-      const normalized = ratingNormalizer.normalizeDirectRating(data);
-      if (normalized !== null) {
-        normalizedBreakdown[provider] = {
-          raw: data,
-          normalized: normalized,
-          type: 'direct'
-        };
-      }
-    } else if (typeof data === 'object') {
-      const type = data.type || 'direct';
-      const raw = data.raw;
-      
-      let normalized;
-      if (type === 'views') {
-        normalized = ratingNormalizer.normalizeViewCount(raw);
-      } else {
-        normalized = ratingNormalizer.normalizeDirectRating(raw);
-      }
-      
-      if (normalized !== null) {
-        normalizedBreakdown[provider] = {
-          raw: raw,
-          normalized: normalized,
-          type: type
-        };
-      }
-    }
-  }
-  
-  // Use the rating normalizer's weighted average calculation
-  return ratingNormalizer.calculateWeightedAverage(normalizedBreakdown);
+  // Use the new priority-based system
+  return ratingNormalizer.getPriorityRating(ratingBreakdown);
 }
 
 /**
@@ -244,7 +502,8 @@ function mergeSeries(existing, newSeries) {
   if (primary.rating !== undefined && primary.rating !== null && !primary.ratingBreakdown[primaryPrefix]) {
     primary.ratingBreakdown[primaryPrefix] = {
       raw: primary.rating,
-      type: primary.ratingType || 'direct'
+      type: primary.ratingType || 'direct',
+      voteCount: primary.voteCount || null  // Include vote count for minimum threshold check
     };
   }
   // Handle view counts from HentaiTV
@@ -259,7 +518,8 @@ function mergeSeries(existing, newSeries) {
     secondary.ratingBreakdown = secondary.ratingBreakdown || {};
     secondary.ratingBreakdown[secondaryPrefix] = {
       raw: secondary.rating,
-      type: secondary.ratingType || 'direct'
+      type: secondary.ratingType || 'direct',
+      voteCount: secondary.voteCount || null  // Include vote count for minimum threshold check
     };
   }
   // Handle view counts from secondary provider
@@ -282,17 +542,26 @@ function mergeSeries(existing, newSeries) {
   }
   primary.providerSlugs[secondaryPrefix] = secondary.id.replace(`${secondaryPrefix}-`, '');
   
-  // Recalculate average rating
-  primary.rating = calculateAverageRating(primary.ratingBreakdown);
+  // Recalculate rating using priority-based system
+  const ratingResult = calculateAverageRating(primary.ratingBreakdown);
+  primary.rating = ratingResult.rating;
+  primary.ratingSource = ratingResult.source;
+  primary.ratingIsNA = ratingResult.isNA;
   
   // Keep best poster (prefer non-null, prefer primary's)
   if (!primary.poster && secondary.poster) {
     primary.poster = secondary.poster;
   }
   
-  // Keep longest description (primary already has better metadata, but check anyway)
-  if (!primary.description || (secondary.description && secondary.description.length > primary.description.length)) {
-    primary.description = secondary.description;
+  // Select best description using description helper
+  // Prefers non-promotional descriptions with actual content
+  const descriptions = [
+    primary.description,
+    secondary.description
+  ].filter(d => d && d.length > 0);
+  
+  if (descriptions.length > 0) {
+    primary.description = selectBestDescription(descriptions);
   }
   
   // Merge genres (deduplicate and filter out studio name)
@@ -317,6 +586,11 @@ function mergeSeries(existing, newSeries) {
     if (primaryAllCaps && !secondaryAllCaps) {
       primary.studio = secondary.studio;
     }
+  }
+  
+  // Merge year (prefer non-null)
+  if (!primary.year && secondary.year) {
+    primary.year = secondary.year;
   }
   
   // Merge lastUpdated dates (keep most recent)
@@ -387,9 +661,16 @@ function aggregateCatalogs(providerCatalogs) {
           );
         }
         
+        // Clean up description if promotional
+        let cleanedDescription = series.description;
+        if (isPromotionalDescription(series.description)) {
+          cleanedDescription = 'No Description';
+        }
+        
         const newSeries = {
           ...series,
           genres: filteredGenres,
+          description: cleanedDescription,
           providers: [prefix],
           providerSlugs: {
             [prefix]: series.id.replace(`${prefix}-`, '')
@@ -398,8 +679,11 @@ function aggregateCatalogs(providerCatalogs) {
           metadataScore: calculateMetadataScore(series)
         };
         
-        // Calculate initial rating
-        newSeries.rating = calculateAverageRating(newSeries.ratingBreakdown);
+        // Calculate initial rating using priority-based system
+        const ratingResult = calculateAverageRating(newSeries.ratingBreakdown);
+        newSeries.rating = ratingResult.rating;
+        newSeries.ratingSource = ratingResult.source;
+        newSeries.ratingIsNA = ratingResult.isNA;
         
         aggregated.push(newSeries);
       }
@@ -448,5 +732,12 @@ module.exports = {
   isDuplicate,
   calculateAverageRating,
   calculateMetadataScore,
-  mergeSeries
+  mergeSeries,
+  // Database integration (new)
+  getCatalogFromDatabase,
+  getFromDatabase,
+  isDatabaseReady,
+  getNewestDatabaseDate,
+  getDatabaseBuildDate,
+  searchDatabase
 };

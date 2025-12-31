@@ -13,6 +13,141 @@ const { catalogHandler, metaHandler, streamHandler, getManifest } = require('./a
 const httpClient = require('./utils/httpClient');
 const cache = require('./cache');
 const slugRegistry = require('./cache/slugRegistry');
+const databaseLoader = require('./utils/databaseLoader');
+
+// Track manifest prewarm status to avoid duplicate prewarming
+let manifestPrewarmTriggered = false;
+
+/**
+ * Initialize the database on startup
+ * Loads pre-bundled catalog data for fast lookups
+ */
+async function initializeDatabase() {
+  logger.info('📦 Initializing pre-bundled database...');
+  try {
+    const db = await databaseLoader.loadDatabase();
+    if (databaseLoader.isReady()) {
+      const stats = databaseLoader.getStats();
+      logger.info(`✅ Database ready: ${stats.totalSeries} series, built ${stats.buildDate || 'unknown'}`);
+      
+      // Enable database mode on cache systems - no disk caching needed!
+      // Database already has all metadata, so disk cache is unnecessary
+      cache.enableDatabaseMode();
+      slugRegistry.enableDatabaseMode();
+      logger.info('🚀 Database mode enabled - disk caching disabled (database is the cache)');
+    } else {
+      logger.warn('⚠️ No pre-bundled database available. Will scrape on demand.');
+    }
+  } catch (error) {
+    logger.warn(`Database init warning: ${error.message}`);
+  }
+}
+
+/**
+ * Pre-warm catalogs when manifest is served (addon installed)
+ * 
+ * SIMPLIFIED: With pre-bundled database, Top Rated and most content is instant.
+ * Only pre-warm "New Releases" to catch content added AFTER the database was built.
+ * 
+ * Database provides: All historical catalog data (instant load)
+ * Pre-warm provides: Fresh content not in database yet
+ */
+async function prewarmCatalogsOnManifest() {
+  if (manifestPrewarmTriggered) {
+    logger.debug('Catalog prewarm already triggered, skipping');
+    return;
+  }
+  manifestPrewarmTriggered = true;
+  
+  // Check if database is ready - if so, only warm new releases
+  const dbReady = databaseLoader.isReady();
+  const dbStats = databaseLoader.getStats();
+  
+  if (dbReady) {
+    logger.info(`📦 Database ready with ${dbStats.totalSeries} series (built: ${dbStats.buildDate || 'unknown'})`);
+    logger.info('🔥 Pre-warming only New Releases (content since database build)...');
+  } else {
+    logger.info('⚠️ No database - pre-warming all catalogs from scrapers...');
+  }
+  
+  try {
+    // Import scrapers
+    const hentaimamaScraper = require('./scrapers/hentaimama');
+    const hentaiseaScraper = require('./scrapers/hentaisea');
+    const hentaitvScraper = require('./scrapers/hentaitv');
+    
+    const DELAY_MS = 100;
+    
+    // WITH DATABASE: Only warm page 1 of new releases (catch fresh content)
+    // WITHOUT DATABASE: Warm 3 pages of everything (full warmup)
+    const PAGES_TO_PREWARM = dbReady ? 1 : 3;
+    
+    // Skip Top Rated warmup if database is ready (data is pre-bundled)
+    if (!dbReady) {
+      logger.info('📊 Pre-warming Top Rated catalog (no database)...');
+      for (let page = 1; page <= PAGES_TO_PREWARM; page++) {
+        const promises = [
+          cache.prewarm(
+            cache.key('catalog', `hmm-popular-page-${page}`),
+            cache.getTTL('catalog'),
+            () => hentaimamaScraper.getCatalog(page, null, 'popular')
+          ),
+          cache.prewarm(
+            cache.key('catalog', `hse-popular-page-${page}`),
+            cache.getTTL('catalog'),
+            () => hentaiseaScraper.getTrending(page)
+          ),
+          cache.prewarm(
+            cache.key('catalog', `htv-popular-page-${page}`),
+            cache.getTTL('catalog'),
+            () => hentaitvScraper.getCatalog(page, null, 'popular')
+          )
+        ];
+        
+        await Promise.allSettled(promises);
+        logger.info(`✓ Top Rated page ${page} pre-warmed`);
+        
+        if (page < PAGES_TO_PREWARM) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+        }
+      }
+    }
+    
+    // Always warm New Releases (catches content since last database build)
+    logger.info(`📅 Pre-warming New Releases (${PAGES_TO_PREWARM} page(s))...`);
+    for (let page = 1; page <= PAGES_TO_PREWARM; page++) {
+      const promises = [
+        cache.prewarm(
+          cache.key('catalog', `hmm-recent-page-${page}`),
+          cache.getTTL('catalog'),
+          () => hentaimamaScraper.getCatalog(page, null, 'recent')
+        ),
+        cache.prewarm(
+          cache.key('catalog', `hse-recent-page-${page}`),
+          cache.getTTL('catalog'),
+          () => hentaiseaScraper.getCatalog(page, null, 'recent')
+        ),
+        cache.prewarm(
+          cache.key('catalog', `htv-recent-page-${page}`),
+          cache.getTTL('catalog'),
+          () => hentaitvScraper.getCatalog(page, null, 'recent')
+        )
+      ];
+      
+      await Promise.allSettled(promises);
+      logger.info(`✓ New Releases page ${page} pre-warmed`);
+      
+      if (page < PAGES_TO_PREWARM) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+      }
+    }
+    
+    logger.info('✅ Catalog pre-warming complete!');
+    logger.info(`Cache stats: ${JSON.stringify(cache.getStats())}`);
+  } catch (error) {
+    logger.warn(`Catalog pre-warm error: ${error.message}`);
+  }
+}
 
 // Create Express app
 const app = express();
@@ -405,6 +540,10 @@ app.get('/manifest.json', async (req, res) => {
     }
     
     logger.info(`Serving manifest (${JSON.stringify(manifest).length} bytes)`);
+    
+    // Trigger catalog pre-warming in background when manifest is served (addon install)
+    prewarmCatalogsOnManifest();
+    
     res.json(manifest);
   } catch (error) {
     logger.error('Manifest error:', error);
@@ -473,6 +612,10 @@ app.get('/:config/manifest.json', async (req, res) => {
     }
     
     logger.info(`Serving configured manifest (${JSON.stringify(manifest).length} bytes)`);
+    
+    // Trigger catalog pre-warming in background when manifest is served (addon install)
+    prewarmCatalogsOnManifest();
+    
     res.json(manifest);
   } catch (error) {
     logger.error('Configured manifest error:', error);
@@ -668,6 +811,9 @@ const server = app.listen(config.server.port, async () => {
   logger.info(`Install URL: stremio://localhost:${config.server.port}/manifest.json`);
   logger.info(`========================================`);
   
+  // Initialize pre-bundled database (if available)
+  await initializeDatabase();
+  
   // Pre-warm connection pools (HTTP/2 keep-alive)
   try {
     await httpClient.prewarmConnections();
@@ -676,16 +822,24 @@ const server = app.listen(config.server.port, async () => {
   }
   
   // Pre-warm catalog cache in background (don't block startup)
+  // SIMPLIFIED: With database, only need to warm "New Releases" for fresh content
   setTimeout(async () => {
-    logger.info('Pre-warming catalog cache in background...');
+    const dbReady = databaseLoader.isReady();
+    
+    if (dbReady) {
+      logger.info('📦 Database loaded - skipping startup cache warmup (data pre-bundled)');
+      logger.info('   New content will be fetched on first "New Releases" request');
+      return;
+    }
+    
+    // Only run full warmup if no database
+    logger.info('⚠️ No database - warming catalog cache from scrapers...');
     
     try {
-      // Import scrapers
       const hentaimamaScraper = require('./scrapers/hentaimama');
       const hentaiseaScraper = require('./scrapers/hentaisea');
       const hentaitvScraper = require('./scrapers/hentaitv');
       
-      // Pre-warm first page of each provider (in parallel)
       const warmupPromises = [
         cache.prewarm(
           cache.key('catalog', 'hmm-page-1'),
@@ -708,11 +862,10 @@ const server = app.listen(config.server.port, async () => {
       const succeeded = results.filter(r => r.status === 'fulfilled' && r.value).length;
       
       logger.info(`Cache warmup complete: ${succeeded}/${warmupPromises.length} providers ready`);
-      logger.info(`Cache stats: ${JSON.stringify(cache.getStats())}`);
     } catch (error) {
       logger.warn(`Cache warmup error: ${error.message}`);
     }
-  }, 5000); // Start warmup 5 seconds after server starts
+  }, 5000);
   
   // Start self-ping mechanism (Render keep-alive)
   setupSelfPing();

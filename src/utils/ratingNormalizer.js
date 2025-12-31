@@ -1,41 +1,42 @@
 /**
  * Rating Normalizer Utility
  * 
- * Converts different rating systems to a unified 0-10 scale
- * and calculates weighted averages across providers.
+ * Priority-based rating system:
+ * 1. HentaiMama (direct user ratings) - PRIMARY, always use if available AND has enough votes
+ * 2. HentaiTV (view-based ratings) - SECONDARY fallback
+ * 3. HentaiSea (trending position) - TERTIARY fallback
+ * 4. "N/A" if no rating from any source or insufficient votes
  */
 
 const logger = require('./logger');
 
 // Configuration
 const CONFIG = {
-  // Minimum view threshold before view-based ratings have full weight
-  // Lowered to 100 to include more content with ratings
+  // Minimum view threshold for view-based ratings to be valid
   VIEW_THRESHOLD: 1000,
   
-  // Default rating for content without ratings (neutral)
-  DEFAULT_RATING: 6.0,
-  
-  // Provider weights (HentaiMama ratings are most reliable - PRIMARY SOURCE)
-  PROVIDER_WEIGHTS: {
-    hmm: 5.0,  // HentaiMama - direct user ratings, highest weight (primary source)
-    htv: 1.0,  // HentaiTV - view counts, lower weight
-    hse: 1.0,  // HentaiSea - trending position (when available), lower weight
-  },
+  // Minimum vote count for direct ratings to be valid
+  // If a rating has fewer than this many votes, show N/A
+  MIN_VOTE_COUNT: 10,
   
   // View count to rating conversion (logarithmic scale)
-  // Max 7.0 for view-based ratings - HentaiMama's real ratings (8-10) should dominate
   VIEWS: {
-    multiplier: 1.5,  // Reduced from 2.5
-    maxValue: 7.0,    // Reduced from 8.5
+    multiplier: 1.5,
+    maxValue: 7.5,  // Cap view-based ratings
     logBase: 10
-  }
+  },
+  
+  // Trending rating cap (position-based, not user ratings)
+  TRENDING_MAX: 7.0,
+  
+  // Provider priority order (first with valid rating wins)
+  PRIORITY_ORDER: ['hmm', 'htv', 'hse']
 };
 
 /**
  * Normalize a direct rating (0-10 scale)
  * @param {number} rating - Direct rating value
- * @returns {number} Normalized rating (0-10)
+ * @returns {number|null} Normalized rating (0-10) or null if invalid
  */
 function normalizeDirectRating(rating) {
   if (typeof rating !== 'number' || isNaN(rating)) {
@@ -48,7 +49,6 @@ function normalizeDirectRating(rating) {
 /**
  * Normalize view count to a rating
  * Uses logarithmic scale: more views = higher rating
- * BUT only if views exceed threshold, otherwise returns null (unrated)
  * 
  * @param {number} views - View count
  * @returns {number|null} Normalized rating or null if below threshold
@@ -58,24 +58,24 @@ function normalizeViewCount(views) {
     return null;
   }
   
-  // Below threshold = unrated (will use default or be excluded)
+  // Below threshold = no valid rating
   if (views < CONFIG.VIEW_THRESHOLD) {
     return null;
   }
   
-  // Logarithmic scaling: log10(views) * multiplier, capped at 10
+  // Logarithmic scaling: log10(views) * multiplier, capped
   const normalized = Math.min(
     CONFIG.VIEWS.maxValue,
     Math.log10(views + 1) * CONFIG.VIEWS.multiplier
   );
   
-  return Math.round(normalized * 10) / 10; // Round to 1 decimal
+  return Math.round(normalized * 10) / 10;
 }
 
 /**
  * Normalize a rating based on its type
  * @param {number} value - Raw rating/view value
- * @param {string} type - Type of rating: 'direct', 'views', 'percentage', 'stars', 'trending'
+ * @param {string} type - Type of rating: 'direct', 'views', 'trending'
  * @returns {number|null} Normalized rating (0-10) or null if invalid
  */
 function normalizeRating(value, type = 'direct') {
@@ -87,20 +87,9 @@ function normalizeRating(value, type = 'direct') {
       return normalizeViewCount(value);
     
     case 'trending':
-      // Trending position converted to a rating, but capped at 7.5
-      // since it's not a real user rating (HentaiMama ratings should dominate)
+      // Trending position converted to a rating, capped
       if (typeof value !== 'number' || isNaN(value)) return null;
-      return Math.min(7.5, normalizeDirectRating(value));
-    
-    case 'percentage':
-      // 0-100% to 0-10
-      if (typeof value !== 'number' || isNaN(value)) return null;
-      return Math.max(0, Math.min(10, value / 10));
-    
-    case 'stars':
-      // 1-5 stars to 0-10
-      if (typeof value !== 'number' || isNaN(value)) return null;
-      return Math.max(0, Math.min(10, (value / 5) * 10));
+      return Math.min(CONFIG.TRENDING_MAX, normalizeDirectRating(value));
     
     default:
       return normalizeDirectRating(value);
@@ -108,81 +97,71 @@ function normalizeRating(value, type = 'direct') {
 }
 
 /**
- * Calculate weighted average rating across providers
+ * Get priority-based rating from rating breakdown
  * 
- * Logic:
- * 1. HentaiMama ratings get higher weight (2x) since they're direct user ratings
- * 2. Providers without ratings are excluded from average (not penalized)
- * 3. If only view-based ratings exist and views < threshold, use default rating
- * 4. If HentaiMama has a rating, it has more influence even on low-view content
+ * Priority order:
+ * 1. HentaiMama direct rating (if available AND has enough votes)
+ * 2. HentaiTV view-based rating (if views >= threshold)
+ * 3. HentaiSea trending rating (fallback)
+ * 4. null if no valid rating from any source
  * 
  * @param {Object} ratingBreakdown - Map of provider prefix to rating info
- *   Example: { hmm: { raw: 8.6, normalized: 8.6, type: 'direct' }, hse: null }
- *   OR:      { hmm: { raw: 8.6, type: 'direct' } } - normalized will be calculated
- * @returns {number} Weighted average rating (0-10), defaults to 6.0 if no ratings
+ * @param {number} voteCount - Optional vote count for direct ratings
+ * @returns {Object} { rating: number|null, source: string|null, isNA: boolean }
  */
-function calculateWeightedAverage(ratingBreakdown) {
+function getPriorityRating(ratingBreakdown, voteCount = null) {
   if (!ratingBreakdown || typeof ratingBreakdown !== 'object') {
-    return CONFIG.DEFAULT_RATING;
+    return { rating: null, source: null, isNA: true };
   }
   
-  let totalWeight = 0;
-  let weightedSum = 0;
-  let hasHentaiMamaRating = false;
-  
-  for (const [provider, ratingInfo] of Object.entries(ratingBreakdown)) {
+  // Try each provider in priority order
+  for (const provider of CONFIG.PRIORITY_ORDER) {
+    const ratingInfo = ratingBreakdown[provider];
     if (!ratingInfo) continue;
     
-    // Get or calculate normalized value
-    let normalized = ratingInfo.normalized;
+    const raw = ratingInfo.raw;
+    const type = ratingInfo.type || 'direct';
+    const votes = ratingInfo.voteCount || voteCount;
     
-    // If normalized is missing, calculate it from raw + type
-    if (normalized === null || normalized === undefined) {
-      const raw = ratingInfo.raw;
-      const type = ratingInfo.type || 'direct';
-      
-      if (raw === null || raw === undefined) continue;
-      
-      // Normalize based on type
-      if (type === 'views') {
-        normalized = normalizeViewCount(raw);
-      } else if (type === 'trending') {
-        // Trending ratings are capped at 7.5
-        normalized = Math.min(7.5, normalizeDirectRating(raw));
-      } else {
-        normalized = normalizeDirectRating(raw);
+    if (raw === null || raw === undefined) continue;
+    
+    // For direct ratings, require minimum vote count
+    // This prevents showing ratings based on 1-2 votes as if they're reliable
+    if (type === 'direct' && votes !== null && votes !== undefined) {
+      if (votes < CONFIG.MIN_VOTE_COUNT) {
+        logger.debug(`[RatingNormalizer] Skipping ${provider} rating (only ${votes} votes, need ${CONFIG.MIN_VOTE_COUNT})`);
+        continue; // Skip this provider, try next
       }
     }
     
-    // Skip if normalization failed
-    if (normalized === null || normalized === undefined) continue;
-    
-    const weight = CONFIG.PROVIDER_WEIGHTS[provider] || 1.0;
-    
-    if (provider === 'hmm' && normalized !== null) {
-      hasHentaiMamaRating = true;
+    // Normalize based on type
+    let normalized;
+    if (type === 'views') {
+      normalized = normalizeViewCount(raw);
+    } else if (type === 'trending') {
+      normalized = Math.min(CONFIG.TRENDING_MAX, normalizeDirectRating(raw));
+    } else {
+      normalized = normalizeDirectRating(raw);
     }
     
-    weightedSum += normalized * weight;
-    totalWeight += weight;
+    // If we got a valid rating from this provider, use it
+    if (normalized !== null && normalized !== undefined) {
+      return { 
+        rating: normalized, 
+        source: provider,
+        isNA: false
+      };
+    }
   }
   
-  // If no valid ratings, return default
-  if (totalWeight === 0) {
-    return CONFIG.DEFAULT_RATING;
-  }
-  
-  const average = weightedSum / totalWeight;
-  
-  // Round to 1 decimal place
-  return Math.round(average * 10) / 10;
+  // No valid rating from any source
+  return { rating: null, source: null, isNA: true };
 }
 
 /**
  * Create a rating breakdown object for a series
  * @param {Object} ratings - Map of provider prefix to raw rating data
- *   Example: { hmm: { value: 8.6, type: 'direct' }, hse: { value: 5000, type: 'views' } }
- * @returns {Object} Rating breakdown with raw and normalized values
+ * @returns {Object} Rating breakdown with raw, normalized values, and type
  */
 function createRatingBreakdown(ratings) {
   const breakdown = {};
@@ -193,12 +172,13 @@ function createRatingBreakdown(ratings) {
       continue;
     }
     
-    const normalized = normalizeRating(data.value, data.type || 'direct');
+    const type = data.type || 'direct';
+    const normalized = normalizeRating(data.value, type);
     
     breakdown[provider] = {
       raw: data.value,
       normalized: normalized,
-      type: data.type || 'direct'
+      type: type
     };
   }
   
@@ -207,19 +187,15 @@ function createRatingBreakdown(ratings) {
 
 /**
  * Format rating for display in Stremio
- * Shows the rating where runtime would normally appear
- * 
- * @param {number} rating - Normalized rating (0-10)
- * @param {Object} ratingBreakdown - Optional breakdown for tooltip
- * @returns {string} Formatted rating string
+ * @param {number|null} rating - Normalized rating (0-10) or null
+ * @param {boolean} isNA - Whether to show "N/A"
+ * @returns {string} Formatted rating string (e.g., "★ 8.5" or "★ N/A")
  */
-function formatRatingForDisplay(rating, ratingBreakdown = null) {
-  if (rating === null || rating === undefined || isNaN(rating)) {
-    return '';
+function formatRatingForDisplay(rating, isNA = false) {
+  if (isNA || rating === null || rating === undefined) {
+    return '★ N/A';
   }
-  
-  // Format as "8.5" - no star icon needed since Stremio shows its own
-  return rating.toFixed(1);
+  return `★ ${rating.toFixed(1)}`;
 }
 
 /**
@@ -248,18 +224,25 @@ function formatRatingBreakdown(ratingBreakdown) {
     if (info.type === 'views') {
       parts.push(`${name}: ${info.raw.toLocaleString()} views`);
     } else {
-      parts.push(`${name}: ${info.normalized}/10`);
+      parts.push(`${name}: ${info.normalized.toFixed(1)}/10`);
     }
   }
   
   return parts.join(' | ');
 }
 
+// Legacy function for backwards compatibility - now uses priority system
+function calculateWeightedAverage(ratingBreakdown) {
+  const { rating, isNA } = getPriorityRating(ratingBreakdown);
+  return isNA ? null : rating;
+}
+
 module.exports = {
   normalizeRating,
   normalizeDirectRating,
   normalizeViewCount,
-  calculateWeightedAverage,
+  getPriorityRating,
+  calculateWeightedAverage,  // Legacy compatibility
   createRatingBreakdown,
   formatRatingForDisplay,
   formatRatingBreakdown,

@@ -12,28 +12,23 @@ const streamHandler = require('./handlers/stream');
 const { getManifest } = require('./manifest');
 const logger = require('../utils/logger');
 
-// Store cached manifest
-let cachedManifest = null;
-
 /**
- * Get the manifest (cached after first load)
+ * Get the manifest (generated fresh each time for dynamic time period counts)
+ * 
+ * NOTE: We don't cache the manifest because time period counts need to be
+ * recalculated dynamically (e.g., "This Week" count changes as time passes)
  */
-async function ensureManifestLoaded() {
-  if (!cachedManifest) {
-    try {
-      cachedManifest = await getManifest();
-      logger.info(`Manifest loaded with ${cachedManifest.catalogs.length} catalogs`);
-    } catch (err) {
-      logger.error('Failed to load manifest:', err.message);
-      // Return base manifest from require
-      cachedManifest = require('./manifest');
-    }
+async function getManifestFresh() {
+  try {
+    const manifest = await getManifest();
+    logger.info(`Manifest loaded with ${manifest.catalogs.length} catalogs`);
+    return manifest;
+  } catch (err) {
+    logger.error('Failed to load manifest:', err.message);
+    // Return base manifest from require
+    return require('./manifest');
   }
-  return cachedManifest;
 }
-
-// Initialize manifest on startup
-ensureManifestLoaded();
 
 /**
  * Catalog handler wrapper with error handling
@@ -77,5 +72,5 @@ module.exports = {
   catalogHandler: handleCatalog,
   metaHandler: handleMeta,
   streamHandler: handleStream,
-  getManifest: ensureManifestLoaded
+  getManifest: getManifestFresh
 };

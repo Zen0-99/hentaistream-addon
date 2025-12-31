@@ -130,6 +130,11 @@ class HentaiTVScraper {
       $('a[aria-label][href*="/genre/"]').each((i, el) => {
         const label = $(el).attr('aria-label');
         if (label) {
+          // Skip year-like values (e.g., "1986", "2024") - these are NOT genres
+          if (/^\d{4}$/.test(label.trim())) {
+            return; // Skip this one
+          }
+          
           // Capitalize each word: "big boobs" -> "Big Boobs"
           const formatted = label
             .split(' ')
@@ -141,9 +146,12 @@ class HentaiTVScraper {
         }
       });
       
-      // Extract brand/studio from aria-label buttons that link to /brand/
-      // Format: <a class="btn..." aria-label="pink pineapple" href="https://hentai.tv/brand/pink-pineapple/">
+      // Extract brand/studio from links to /brand/
+      // Format 1: <a class="btn..." aria-label="pink pineapple" href="https://hentai.tv/brand/pink-pineapple/">
+      // Format 2: <a href="https://hentai.tv/brand/softcell/">SoftCell</a> (no aria-label)
       let studio = null;
+      
+      // Try aria-label first (more reliable)
       $('a[aria-label][href*="/brand/"]').each((i, el) => {
         const label = $(el).attr('aria-label');
         if (label) {
@@ -155,6 +163,17 @@ class HentaiTVScraper {
           return false; // Take first one only
         }
       });
+      
+      // Fallback: Get studio from link text if no aria-label
+      if (!studio) {
+        $('a[href*="/brand/"]').each((i, el) => {
+          const text = $(el).text().trim();
+          if (text && text.length > 1 && text.length < 50) {
+            studio = text;
+            return false; // Take first one only
+          }
+        });
+      }
       
       // Extract description from the prose div
       let description = '';
@@ -182,14 +201,37 @@ class HentaiTVScraper {
         }
       });
       
-      logger.debug(`[HentaiTV] Episode page ${episodeSlug}: ${genres.length} genres, ${viewCount || 0} views, studio: ${studio || 'none'}, desc: ${description.substring(0, 50)}...`);
+      // Extract ACTUAL Release Date (not upload date) from episode info
+      // Format: <span class="text-silver-100 block">Release Date</span><span>1986-07-13 16:04:52</span>
+      let releaseDate = null;
+      let releaseYear = null;
+      $('span.text-silver-100').each((i, el) => {
+        const labelText = $(el).text().trim();
+        if (labelText.toLowerCase().includes('release date')) {
+          // Get the next sibling span which contains the actual date
+          const dateSpan = $(el).next('span');
+          const dateText = dateSpan.text().trim();
+          // Date format: "1986-07-13 16:04:52"
+          const dateMatch = dateText.match(/(\d{4})-(\d{2})-(\d{2})/);
+          if (dateMatch) {
+            releaseYear = parseInt(dateMatch[1]);
+            releaseDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+            logger.debug(`[HentaiTV] Found Release Date: ${releaseDate}, year: ${releaseYear}`);
+          }
+          return false; // Break after finding first
+        }
+      });
+      
+      logger.debug(`[HentaiTV] Episode page ${episodeSlug}: ${genres.length} genres, ${viewCount || 0} views, studio: ${studio || 'none'}, releaseDate: ${releaseDate || 'none'}`);
       
       return {
         description: description || null,
         genres: genres.length > 0 ? genres : null,
         poster: poster || null,
         viewCount: viewCount,
-        studio: studio
+        studio: studio,
+        releaseDate: releaseDate,
+        releaseYear: releaseYear
       };
     } catch (error) {
       logger.debug(`[HentaiTV] Episode page fetch failed for ${episodeSlug}: ${error.message}`);
@@ -504,6 +546,22 @@ class HentaiTVScraper {
               if (text) series.description = text.substring(0, 300);
             }
             
+            // Extract lastUpdated (Last air date) from WordPress API date field
+            // HentaiTV API provides full ISO date in ep.date
+            if (ep.date) {
+              const fullDate = parseDate(ep.date);
+              if (fullDate) {
+                series.lastUpdated = fullDate;
+                // Also extract year
+                const yearFromDate = extractYear(fullDate);
+                if (yearFromDate) {
+                  series.year = yearFromDate;
+                  series.releaseInfo = String(yearFromDate);
+                }
+                logger.debug(`[HentaiTV] Found lastUpdated ${fullDate} for ${series.name}`);
+              }
+            }
+            
             // Extract poster from embedded featured media
             if (ep._embedded && ep._embedded['wp:featuredmedia'] && ep._embedded['wp:featuredmedia'][0]) {
               const media = ep._embedded['wp:featuredmedia'][0];
@@ -529,7 +587,51 @@ class HentaiTVScraper {
         logger.info(`[HentaiTV] Enriched ${enrichedCount}/${itemsToFetch.length} items with metadata${emptyResponses > 0 ? ` (${emptyResponses} empty API responses)` : ''}`);
       }
       
-      return seriesArray;
+      // QUALITY GATE: Filter out series with inadequate metadata
+      // HentaiTV items with promotional descriptions or no posters should be dropped
+      const qualitySeries = seriesArray.filter(series => {
+        // Must have basic fields
+        if (!series.id || !series.name) {
+          return false;
+        }
+        
+        // Must have a poster (no placeholder TV icons in catalog)
+        if (!series.poster || series.poster.includes('data:image')) {
+          logger.debug(`[HentaiTV] No poster for "${series.name}" - dropping from catalog`);
+          return false;
+        }
+        
+        // Check if description is promotional/generic
+        const desc = (series.description || '').toLowerCase();
+        const isPromoDescription = 
+          desc.includes('watch all') && desc.includes('episode') && desc.includes('hentaitv') ||
+          desc.includes('stream the complete series') ||
+          desc.includes('in hd quality on hentaitv') ||
+          desc.match(/^.+?\s+-\s+watch\s+all\s+\d+\s+episode/i) ||
+          !desc || desc.length < 20;
+        
+        if (isPromoDescription) {
+          // Only drop if we also don't have good genres
+          const hasGoodGenres = series.genres && 
+                               Array.isArray(series.genres) && 
+                               series.genres.length > 1 &&
+                               !series.genres.every(g => ['Hentai', 'Anime', 'Adult Animation'].includes(g));
+          
+          if (!hasGoodGenres) {
+            logger.debug(`[HentaiTV] Promotional description and no genres for "${series.name}" - dropping`);
+            return false;
+          }
+        }
+        
+        return true;
+      });
+      
+      const droppedCount = seriesArray.length - qualitySeries.length;
+      if (droppedCount > 0) {
+        logger.info(`[HentaiTV] Quality gate: ${droppedCount}/${seriesArray.length} series dropped (no poster or promotional desc)`);
+      }
+      
+      return qualitySeries;
       
     } catch (error) {
       logger.error(`[HentaiTV] Search page catalog error: ${error.message}`);
@@ -703,8 +805,22 @@ class HentaiTVScraper {
         releaseInfo: series.year ? String(series.year) : undefined
       }));
       
-      logger.info(`[HentaiTV] Found ${results.length} unique series on page ${page} (from ${episodes.length} episodes)`);
-      return results;
+      // QUALITY GATE: Filter out items without proper metadata
+      const qualityResults = results.filter(series => {
+        // Must have poster
+        if (!series.poster || series.poster.includes('data:image')) {
+          return false;
+        }
+        // Check promotional description
+        const desc = (series.description || '').toLowerCase();
+        if (desc.includes('watch') && desc.includes('hentaitv') && desc.includes('in hd')) {
+          return false;
+        }
+        return true;
+      });
+      
+      logger.info(`[HentaiTV] Found ${qualityResults.length} unique series on page ${page} (from ${episodes.length} episodes, ${results.length - qualityResults.length} filtered)`);
+      return qualityResults;
       
     } catch (error) {
       logger.error(`[HentaiTV] Catalog error: ${error.message}`);
@@ -1072,6 +1188,7 @@ class HentaiTVScraper {
       let description = null;
       let genres = ['Hentai', 'Anime', 'Adult Animation']; // Default genres
       let studio = null;
+      let seriesYear = null;  // Actual release year (not upload year)
       
       // Fetch episode 1 page - gets BOTH description AND genres in one request
       const firstEpisodeSlug = episodes[0]?.slug;
@@ -1102,6 +1219,18 @@ class HentaiTVScraper {
           studio = pageData.studio;
           logger.info(`[HentaiTV] Got studio from page: ${studio}`);
         }
+        
+        // Use ACTUAL Release Date year from page (not upload date!)
+        if (pageData?.releaseYear) {
+          seriesYear = pageData.releaseYear;
+          logger.info(`[HentaiTV] Got actual release year from page: ${seriesYear}`);
+        }
+        
+        // Set episode released date from actual Release Date
+        if (pageData?.releaseDate && episodes.length > 0) {
+          episodes[0].released = new Date(pageData.releaseDate).toISOString();
+          logger.debug(`[HentaiTV] Episode 1 actual release: ${episodes[0].released}`);
+        }
       }
       
       // Generate fallback description if API didn't provide one
@@ -1109,7 +1238,55 @@ class HentaiTVScraper {
         description = `${displayName} - Watch all ${episodes.length} episode${episodes.length > 1 ? 's' : ''} in HD quality on HentaiTV. Stream the complete series online for free.`;
       }
       
-      logger.info(`[HentaiTV] Found ${episodes.length} episodes for ${displayName}${studio ? `, studio: ${studio}` : ''}`);
+      // ===== FETCH EPISODE DATES FROM WORDPRESS API =====
+      // The WordPress API returns dates for each episode
+      let seriesLastUpdated = null;
+      
+      try {
+        // Fetch dates for first 5 episodes to determine series lastUpdated
+        const episodeSlugsToFetch = episodes.slice(0, 5).map(ep => ep.slug);
+        logger.info(`[HentaiTV] Fetching dates for ${episodeSlugsToFetch.length} episodes via API...`);
+        
+        for (const epSlug of episodeSlugsToFetch) {
+          try {
+            const apiUrl = `${this.apiUrl}/episodes?slug=${epSlug}`;
+            const apiResp = await this.client.get(apiUrl, { timeout: 5000 });
+            
+            if (apiResp.data && apiResp.data.length > 0) {
+              const epData = apiResp.data[0];
+              const epDate = epData.date; // WordPress date format: "2023-09-22T18:39:13"
+              
+              if (epDate) {
+                // Find matching episode and set released date
+                const matchingEp = episodes.find(e => e.slug === epSlug);
+                if (matchingEp) {
+                  matchingEp.released = new Date(epDate).toISOString();
+                  logger.debug(`[HentaiTV] Episode ${matchingEp.number} date: ${matchingEp.released}`);
+                  
+                  // Track latest episode date
+                  const dateObj = new Date(epDate);
+                  if (!seriesLastUpdated || dateObj > seriesLastUpdated) {
+                    seriesLastUpdated = dateObj;
+                  }
+                }
+              }
+            }
+            
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (err) {
+            logger.debug(`[HentaiTV] Could not fetch date for episode ${epSlug}: ${err.message}`);
+          }
+        }
+        
+        if (seriesLastUpdated) {
+          logger.info(`[HentaiTV] Series lastUpdated from episodes: ${seriesLastUpdated.toISOString()}`);
+        }
+      } catch (err) {
+        logger.debug(`[HentaiTV] Episode date fetching failed: ${err.message}`);
+      }
+      
+      logger.info(`[HentaiTV] Found ${episodes.length} episodes for ${displayName}${studio ? `, studio: ${studio}` : ''}${seriesYear ? `, year: ${seriesYear}` : ''}`);
       
       return {
         id: seriesId,
@@ -1120,7 +1297,9 @@ class HentaiTVScraper {
         description: description,
         genres: genres,
         studio: studio,
-        releaseInfo: episodes.length > 1 ? `${episodes.length} Episodes` : undefined,
+        year: seriesYear,  // Actual release year (not upload year)
+        releaseInfo: seriesYear ? String(seriesYear) : (episodes.length > 1 ? `${episodes.length} Episodes` : undefined),
+        lastUpdated: seriesLastUpdated ? seriesLastUpdated.toISOString() : undefined,
         episodes: episodes
       };
       
