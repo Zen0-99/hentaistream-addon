@@ -50,7 +50,12 @@ function formatSeriesMeta(series) {
   }
   
   // releaseInfo should only contain year
-  if (series.year) {
+  // Priority: releaseInfo (from episode dates, more accurate) > year (from scraper, may be wrong)
+  if (series.releaseInfo) {
+    // releaseInfo might be a full date or just year - extract year
+    const yearMatch = String(series.releaseInfo).match(/(19|20)\d{2}/);
+    formatted.releaseInfo = yearMatch ? yearMatch[0] : series.releaseInfo;
+  } else if (series.year) {
     formatted.releaseInfo = series.year.toString();
   }
   
@@ -431,8 +436,6 @@ function applyYearFilter(series, year) {
  * No scraping needed - the incremental update script handles adding new content.
  */
 async function handleNewReleasesCatalog(catalogId, filterType, skip, limit, genre, userConfig) {
-  logger.info(`📅 New Releases: filterType=${filterType}, skip=${skip}, limit=${limit}`);
-  
   // Step 1: Get database content sorted by date
   const dbItems = getCatalogFromDatabase({
     provider: null,
@@ -443,16 +446,12 @@ async function handleNewReleasesCatalog(catalogId, filterType, skip, limit, genr
   }) || [];
   
   if (dbItems.length === 0) {
-    logger.warn(`📦 New Releases: No items in database`);
     return { metas: [] };
   }
-  
-  logger.info(`📦 New Releases: Database has ${dbItems.length} items sorted by date`);
   
   // Step 2: Apply time filter using centralized function
   // Handles: 'week'/'weekly', 'month'/'monthly', '3months', 'year'
   let filtered = filterType ? applyTimeFilter(dbItems, filterType) : dbItems;
-  logger.info(`📅 Time filter (${filterType || 'none'}): ${dbItems.length} → ${filtered.length} items`);
   
   // Step 3: Apply user blacklist
   filtered = filtered.filter(item => shouldIncludeSeries(item, userConfig));
@@ -460,8 +459,6 @@ async function handleNewReleasesCatalog(catalogId, filterType, skip, limit, genr
   // Step 4: Paginate and format
   const result = filtered.slice(skip, skip + limit);
   const metas = result.map(formatSeriesMeta);
-  
-  logger.info(`📦 New Releases: returning ${metas.length} items (skip=${skip}, total=${filtered.length})`);
   return { metas };
 }
 
@@ -481,12 +478,12 @@ async function catalogHandler(args) {
     ...(config || {})
   };
   
-  logger.info(`Catalog request: ${id}`, { type, extra });
-  logger.debug(`User config received:`, { 
-    blacklistGenres: userConfig.blacklistGenres,
-    blacklistStudios: userConfig.blacklistStudios,
-    providers: userConfig.providers
-  });
+  // Concise logging - shows catalog type and any search/filter params
+  const params = [];
+  if (extra.search) params.push(`search="${extra.search}"`);
+  if (extra.genre) params.push(`genre=${extra.genre.replace(/\s*\(\d+\)$/, '')}`);
+  if (extra.skip) params.push(`skip=${extra.skip}`);
+  logger.info(`📂 Catalog: ${id}${params.length ? ` [${params.join(', ')}]` : ''}`);
 
   // Handle both 'hentai' (custom type) and 'series' (fallback) types
   if (type !== 'series' && type !== 'hentai') {
@@ -507,7 +504,6 @@ async function catalogHandler(args) {
   
   // Parse catalog ID to get sorting/filtering strategy
   const { sortType, filterType, studioFilter, yearFilter, timePeriodFilter } = parseCatalogId(id);
-  logger.info(`Catalog strategy: sortType=${sortType}, filterType=${filterType}, studioFilter=${studioFilter}, yearFilter=${yearFilter}, timePeriodFilter=${timePeriodFilter}`);
 
   // Extract pagination params early
   const skip = parseInt(extra.skip) || 0;
@@ -576,8 +572,6 @@ async function catalogHandler(args) {
     });
     
     if (dbItems && dbItems.length > 0) {
-      logger.info(`📦 Database hit: ${dbItems.length} items (skip=${skip}, limit=${limit}${studioParam ? ', studio=' + studioParam : ''}${yearParam ? ', year=' + yearParam : ''})`);
-      
       // Apply user filters (blacklist only - studio/year already applied in database query)
       let filteredItems = dbItems;
       
@@ -589,8 +583,6 @@ async function catalogHandler(args) {
       
       // Convert to Stremio meta format
       const metas = filteredItems.slice(0, limit).map(formatSeriesMeta);
-      
-      logger.info(`📦 Returning ${metas.length} items from database`);
       return { metas };
     } else {
       logger.debug('Database miss or empty, falling back to scrapers');
@@ -600,13 +592,9 @@ async function catalogHandler(args) {
   // ============================================================
   // SCRAPER FALLBACK: For database miss (shouldn't happen often)
   // ============================================================
-  logger.info(`🔍 Using scrapers for catalog: ${id} (fallback - database not ready or empty)`);
 
   // Determine the sort order to pass to scrapers
   const scraperSortBy = (sortType === 'date') ? 'recent' : 'popular';
-  
-  logger.info(`Request: skip=${skip}, limit=${limit}`);
-  
   const scraper = getScraper(id);
   
   // Determine if we should use single provider or all providers (aggregated catalog)
@@ -659,8 +647,6 @@ async function catalogHandler(args) {
   const useDirectFetch = (yearFilter && extraGenre) || (studioFilter && extraGenre);
   
   while (catalogData.series.length < targetCount && !catalogData.isComplete) {
-    logger.info(`Have ${catalogData.series.length} series, need ${targetCount}, fetching page ${catalogData.nextPage}`);
-    
     let providerResults;
     
     if (isAggregatedCatalog) {
@@ -748,7 +734,6 @@ async function catalogHandler(args) {
     const newAggregatedSeries = aggregateCatalogs(providerResults);
     
     if (!newAggregatedSeries || newAggregatedSeries.length === 0) {
-      logger.info(`Page ${catalogData.nextPage} returned no results from any provider - end of catalog`);
       catalogData.isComplete = true;
       break;
     }
@@ -768,14 +753,10 @@ async function catalogHandler(args) {
         const merged = mergeSeries(catalogData.series[existingIndex], newSeries);
         catalogData.series[existingIndex] = merged;
         mergeCount++;
-        logger.debug(`Merged cross-page duplicate: ${newSeries.name} (rating now: ${merged.rating})`);
       } else {
         trulyNewSeries.push(newSeries);
       }
     }
-    
-    const totalFromProviders = providerResults.reduce((sum, pr) => sum + pr.catalog.length, 0);
-    logger.info(`Page ${catalogData.nextPage}: ${totalFromProviders} total items from providers → ${newAggregatedSeries.length} after aggregation → ${trulyNewSeries.length} NEW unique + ${mergeCount} merged with existing`);
     
     // Only add series we don't already have
     if (trulyNewSeries.length > 0) {
@@ -791,7 +772,6 @@ async function catalogHandler(args) {
     
     // Safety: if we get no new series, we're done
     if (trulyNewSeries.length === 0) {
-      logger.warn(`⚠️  Page ${catalogData.nextPage - 1} had no new series - end of catalog`);
       catalogData.isComplete = true;
       break;
     }
@@ -830,21 +810,6 @@ async function catalogHandler(args) {
       
       return matches;
     });
-    
-    if (beforeGenreFilter !== workingSet.length) {
-      logger.info(`Genre filter (${extraGenre}): ${beforeGenreFilter} → ${workingSet.length} items (smart match, threshold 70)`);
-    }
-  }
-  
-  // Debug: Log studio and year distribution in cached data
-  if (studioFilter || yearFilter) {
-    const studiosFound = workingSet.filter(s => s.studio).length;
-    const yearsFound = workingSet.filter(s => s.year).length;
-    const uniqueStudios = [...new Set(workingSet.map(s => s.studio).filter(Boolean))];
-    const uniqueYears = [...new Set(workingSet.map(s => s.year).filter(Boolean))].sort((a, b) => b - a);
-    logger.info(`📊 Data stats: ${studiosFound}/${workingSet.length} have studio, ${yearsFound}/${workingSet.length} have year`);
-    logger.info(`📊 Unique studios (${uniqueStudios.length}): ${uniqueStudios.slice(0, 10).join(', ')}${uniqueStudios.length > 10 ? '...' : ''}`);
-    logger.info(`📊 Unique years (${uniqueYears.length}): ${uniqueYears.join(', ')}`);
   }
   
   // Apply time-based filtering (weekly/monthly)
@@ -853,9 +818,8 @@ async function catalogHandler(args) {
   if (filterType) {
     const beforeFilter = workingSet.length;
     workingSet = applyTimeFilter(workingSet, filterType);
-    logger.info(`Time filter (${filterType}): ${beforeFilter} → ${workingSet.length} items`);
     
-    // If filtering removed too many items, log warning
+    // If filtering removed all items, log warning
     if (workingSet.length === 0 && beforeFilter > 0) {
       logger.warn(`Time filter (${filterType}) removed all ${beforeFilter} items - items may be missing lastUpdated field`);
     }
@@ -877,25 +841,12 @@ async function catalogHandler(args) {
   };
   
   if (safeConfig.blacklistGenres.length > 0 || safeConfig.blacklistStudios.length > 0) {
-    logger.info(`Blacklist config: genres=${JSON.stringify(safeConfig.blacklistGenres)}, studios=${JSON.stringify(safeConfig.blacklistStudios)}`);
-    const beforeBlacklist = workingSet.length;
-    
-    // Debug: Log series that will be filtered
-    const filteredOut = workingSet.filter(series => !shouldIncludeSeries(series, safeConfig));
-    if (filteredOut.length > 0) {
-      logger.info(`Blacklist removing ${filteredOut.length} series: ${filteredOut.map(s => `${s.name} (genres: ${(s.genres || []).join(', ')})`).join(' | ')}`);
-    }
-    
     workingSet = workingSet.filter(series => shouldIncludeSeries(series, safeConfig));
-    logger.info(`Blacklist filter: ${beforeBlacklist} → ${workingSet.length} items`);
   }
 
   // Now slice the exact items requested and format using shared helper
   const result = workingSet.slice(skip, skip + limit);
   const formattedResult = result.map(formatSeriesMeta);
-  
-  logger.info(`📤 Returning ${formattedResult.length} items (total cached: ${catalogData.series.length}, filtered: ${workingSet.length})`);
-  
   return { metas: formattedResult };
 }
 
@@ -907,7 +858,7 @@ async function catalogHandler(args) {
 async function handleSearch(catalogId, query, userConfig = DEFAULT_CONFIG) {
   // Normalize query to lowercase for case-insensitive search
   const normalizedQuery = query.toLowerCase().trim();
-  logger.info(`🔍 Search request: "${query}" → normalized: "${normalizedQuery}" in catalog ${catalogId}`);
+  logger.info(`🔍 Search: "${query}"`);
   
   const ttl = 900; // 15-minute cache for search results
   
@@ -919,12 +870,10 @@ async function handleSearch(catalogId, query, userConfig = DEFAULT_CONFIG) {
     const dbResults = searchDatabase(normalizedQuery, { limit: 100 });
     
     if (dbResults && dbResults.length > 0) {
-      logger.info(`📚 Database search "${normalizedQuery}" found ${dbResults.length} results (using database)`);
       return dbResults;
     }
     
     // STEP 2: Fall back to scrapers if database has no results
-    logger.info(`📡 Database had no results for "${normalizedQuery}", falling back to scrapers`);
     
     // Determine if this is an aggregated catalog search
     const isAggregatedCatalog = catalogId === 'hentai' || 
@@ -960,8 +909,6 @@ async function handleSearch(catalogId, query, userConfig = DEFAULT_CONFIG) {
       
       // Aggregate and deduplicate search results
       const aggregatedResults = aggregateCatalogs(providerResults);
-      
-      logger.info(`📡 Scraper search "${normalizedQuery}" returned ${aggregatedResults.length} results from ${providerResults.length} providers`);
       return aggregatedResults;
     } else {
       // Single provider search
@@ -970,14 +917,13 @@ async function handleSearch(catalogId, query, userConfig = DEFAULT_CONFIG) {
     }
   });
   
-  logger.info(`✅ Search "${normalizedQuery}" returning ${results.length} results`);
-  
   // Apply user's blacklist filters
   let filteredResults = results;
   if (userConfig.blacklistGenres.length > 0 || userConfig.blacklistStudios.length > 0) {
     filteredResults = results.filter(series => shouldIncludeSeries(series, userConfig));
-    logger.info(`Search blacklist filter: ${results.length} → ${filteredResults.length} items`);
   }
+  
+  logger.info(`✅ Search "${query}": ${filteredResults.length} results`);
   
   // Ensure search results are properly formatted for Stremio
   const formattedResults = filteredResults.map(formatSeriesMeta);

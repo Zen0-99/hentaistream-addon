@@ -105,8 +105,6 @@ async function prewarmCatalogsOnManifest() {
         ];
         
         await Promise.allSettled(promises);
-        logger.info(`✓ Top Rated page ${page} pre-warmed`);
-        
         if (page < PAGES_TO_PREWARM) {
           await new Promise(resolve => setTimeout(resolve, DELAY_MS));
         }
@@ -114,7 +112,6 @@ async function prewarmCatalogsOnManifest() {
     }
     
     // Always warm New Releases (catches content since last database build)
-    logger.info(`📅 Pre-warming New Releases (${PAGES_TO_PREWARM} page(s))...`);
     for (let page = 1; page <= PAGES_TO_PREWARM; page++) {
       const promises = [
         cache.prewarm(
@@ -135,15 +132,12 @@ async function prewarmCatalogsOnManifest() {
       ];
       
       await Promise.allSettled(promises);
-      logger.info(`✓ New Releases page ${page} pre-warmed`);
-      
       if (page < PAGES_TO_PREWARM) {
         await new Promise(resolve => setTimeout(resolve, DELAY_MS));
       }
     }
     
     logger.info('✅ Catalog pre-warming complete!');
-    logger.info(`Cache stats: ${JSON.stringify(cache.getStats())}`);
   } catch (error) {
     logger.warn(`Catalog pre-warm error: ${error.message}`);
   }
@@ -169,9 +163,17 @@ app.use((req, res, next) => {
 // Serve static files from public folder (logo, etc.)
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Log all requests - detailed logging to catch 404 issues
+// Request logging - streamlined to show only important workflow
+// Skip verbose logging of health checks, static files, and detailed query params
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path} | Query: ${JSON.stringify(req.query)} | Params: ${JSON.stringify(req.params)}`);
+  // Skip logging for health checks and static files
+  const skipPaths = ['/health', '/logo.png', '/favicon.ico'];
+  if (skipPaths.some(p => req.path === p)) {
+    return next();
+  }
+  
+  // Simplified log - just method and path for non-errors
+  // Detailed info is logged by handlers themselves
   next();
 });
 
@@ -218,8 +220,7 @@ function setupSelfPing() {
       
       const startTime = Date.now();
       client.get(pingUrl, (res) => {
-        const duration = Date.now() - startTime;
-        logger.info(`Self-ping successful (${res.statusCode}) - ${duration}ms`);
+        // Silent success - only log errors
       }).on('error', (err) => {
         logger.error('Self-ping failed:', err.message);
       });
@@ -230,7 +231,7 @@ function setupSelfPing() {
 
   // Do an initial ping after 1 minute
   setTimeout(() => {
-    logger.info('Performing initial self-ping...');
+    // Trigger first ping silently
   }, 60000);
 }
 
@@ -346,7 +347,7 @@ app.get('/video-proxy', async (req, res) => {
         const fileMatch = jwResponse.data.match(/"file"\s*:\s*"([^"]+)"/);
         if (fileMatch) {
           videoUrl = fileMatch[1].replace(/\\\//g, '/');
-          logger.info(`Video proxy: Got fresh URL: ${videoUrl.substring(0, 80)}...`);
+
         }
       } catch (err) {
         logger.error(`Video proxy: Failed to get jwplayer auth: ${err.message}`);
@@ -355,8 +356,6 @@ app.get('/video-proxy', async (req, res) => {
     } 
     // If we have an episode ID, fetch the episode page and get jwplayer URL
     else if (episodeId) {
-      logger.info(`Video proxy: Fetching episode ${episodeId}...`);
-      
       const slug = episodeId.replace(/^hse-/, '');
       const episodeUrl = `https://hentaisea.com/episodes/${slug}/`;
       
@@ -407,7 +406,7 @@ app.get('/video-proxy', async (req, res) => {
             const fileMatch = jwResponse.data.match(/"file"\s*:\s*"([^"]+)"/);
             if (fileMatch) {
               videoUrl = fileMatch[1].replace(/\\\//g, '/');
-              logger.info(`Video proxy: Got fresh URL from episode: ${videoUrl.substring(0, 80)}...`);
+
             }
           }
         }
@@ -422,8 +421,6 @@ app.get('/video-proxy', async (req, res) => {
     }
     
     // Now proxy the actual video
-    logger.info(`Video proxy: Streaming from ${videoUrl.substring(0, 80)}...`);
-    
     const videoResponse = await axios({
       method: 'get',
       url: videoUrl,
@@ -539,8 +536,6 @@ app.get('/manifest.json', async (req, res) => {
       }));
     }
     
-    logger.info(`Serving manifest (${JSON.stringify(manifest).length} bytes)`);
-    
     // Trigger catalog pre-warming in background when manifest is served (addon install)
     prewarmCatalogsOnManifest();
     
@@ -611,8 +606,6 @@ app.get('/:config/manifest.json', async (req, res) => {
       });
     }
     
-    logger.info(`Serving configured manifest (${JSON.stringify(manifest).length} bytes)`);
-    
     // Trigger catalog pre-warming in background when manifest is served (addon install)
     prewarmCatalogsOnManifest();
     
@@ -663,8 +656,6 @@ app.get('/catalog/:type/:id/:extraArgs.json', async (req, res) => {
     // Merge with query params
     Object.assign(extra, req.query);
     
-    logger.info(`Catalog with extra: type=${type}, id=${id}, extraArgs=${extraArgs}, extra=${JSON.stringify(extra)}`);
-    
     const result = await catalogHandler({ type, id, extra, config: userConfig });
     res.json(result);
   } catch (error) {
@@ -677,7 +668,6 @@ app.get('/catalog/:type/:id/:extraArgs.json', async (req, res) => {
 app.get('/:config/catalog/:type/:id.json', async (req, res) => {
   try {
     const configStr = req.params.config;
-    logger.info(`Path-based catalog request: config=${configStr}, type=${req.params.type}, id=${req.params.id}, query=${JSON.stringify(req.query)}`);
     const userConfig = parseConfig(
       Object.fromEntries(new URLSearchParams(configStr).entries())
     );
@@ -700,7 +690,6 @@ app.get('/:config/catalog/:type/:id.json', async (req, res) => {
 app.get('/:config/catalog/:type/:id/:extraArgs.json', async (req, res) => {
   try {
     const configStr = req.params.config;
-    logger.info(`Path-based catalog with extra: config=${configStr}, type=${req.params.type}, id=${req.params.id}, extraArgs=${req.params.extraArgs}`);
     const userConfig = parseConfig(
       Object.fromEntries(new URLSearchParams(configStr).entries())
     );
@@ -718,8 +707,6 @@ app.get('/:config/catalog/:type/:id/:extraArgs.json', async (req, res) => {
     
     // Merge with query params
     Object.assign(extra, req.query);
-    
-    logger.info(`Parsed extra: ${JSON.stringify(extra)}`);
     
     const result = await catalogHandler({ type, id, extra, config: userConfig });
     res.json(result);

@@ -437,16 +437,18 @@ function getBaseManifest() {
       // Search-only catalog (isRequired: true means this catalog ONLY handles search)
       // This ensures Stremio always routes search queries here
       // Pattern from Anime Kitsu addon
-      // Hidden from UI but functional for search routing
+      // HIDDEN: Does not appear in catalog list, only used for search routing
       {
         type: 'hentai',
         id: 'hentai-search',
-        name: 'Search Hentai',
+        name: 'Search',
         extra: [
           { name: 'search', isRequired: true },
           { name: 'skip' }
         ],
-        // Hide from all catalog views - only used for search routing
+        // Completely hide from UI - pageSize: 0 prevents it from showing in catalog list
+        // while still allowing it to handle search requests
+        pageSize: 0,
         behaviorHints: { notForHome: true }
       },
     ],
