@@ -130,7 +130,8 @@ function generateSlugVariations(cleanSlug, episodeNum) {
  */
 async function streamHandler(args) {
   const { type, id } = args;
-  logger.info(`▶️ Stream: ${id}`);
+  
+  logger.info(`Stream request: ${id}`, { type });
 
   // Validate type - accept both 'series' (standard) and 'hentai' (custom type)
   if (type !== 'series' && type !== 'hentai') {
@@ -148,6 +149,8 @@ async function streamHandler(args) {
       const episodeMatch = id.match(/:1:(\d+)$/);
       const episodeNum = episodeMatch ? episodeMatch[1] : '1';
       
+      logger.info(`Extracting streams from all providers for: ${slug}`);
+      
       // Clean slug - remove all provider prefixes and the addon's "hentai-" prefix
       const cleanSlug = slug
         .replace(/^hmm-/i, '')
@@ -160,6 +163,7 @@ async function streamHandler(args) {
       
       // Generate slug variations for cross-provider matching
       const slugVariations = generateSlugVariations(cleanSlug, episodeNum);
+      logger.info(`Trying slug variations: ${slugVariations.slice(0, 3).join(', ')}...`);
       
       /**
        * Try to get streams from a provider, attempting multiple slug variations
@@ -169,6 +173,7 @@ async function streamHandler(args) {
           try {
             const streams = await scraper.getStreams(variation);
             if (streams && streams.length > 0) {
+              logger.info(`[${providerName}] Found streams with slug: ${variation}`);
               return streams.map(s => ({ ...s, provider: providerName }));
             }
           } catch (err) {
@@ -191,6 +196,7 @@ async function streamHandler(args) {
           const standardSlug = `${baseSlug}-episode-${epNum}`;
           const streams = await hentaitvScraper.getStreams(standardSlug);
           if (streams && streams.length > 0) {
+            logger.info(`[HentaiTV] Found ${streams.length} streams`);
             return streams.map(s => ({ ...s, provider: 'HentaiTV' }));
           }
         } catch (err) {
@@ -218,16 +224,19 @@ async function streamHandler(args) {
       if (hmmResult.status === 'fulfilled' && hmmResult.value?.length > 0) {
         allStreams.push(...hmmResult.value);
         foundProviders.add('HentaiMama');
+        logger.info(`Found ${hmmResult.value.length} streams from HentaiMama`);
       }
       
       if (hseResult.status === 'fulfilled' && hseResult.value?.length > 0) {
         allStreams.push(...hseResult.value);
         foundProviders.add('HentaiSea');
+        logger.info(`Found ${hseResult.value.length} streams from HentaiSea`);
       }
       
       if (htvResult.status === 'fulfilled' && htvResult.value?.length > 0) {
         allStreams.push(...htvResult.value);
         foundProviders.add('HentaiTV');
+        logger.info(`Found ${htvResult.value.length} streams from HentaiTV`);
       }
       
       // If some providers didn't find streams, try search-based fallback
@@ -257,6 +266,7 @@ async function streamHandler(args) {
         try {
           // Try multiple search terms for better cross-language matching
           const searchTerms = extractMultipleSearchTerms(cleanSlug);
+          logger.info(`[HentaiSea] Trying search fallback with terms: ${searchTerms.join(', ')}`);
           
           let foundViaSearch = false;
           
@@ -280,6 +290,8 @@ async function streamHandler(args) {
               return titleMatches(r.name || '', humanReadableTitle);
             });
             
+            logger.info(`[HentaiSea] "${term}": ${relevantResults.length}/${searchResults.length} results match`);
+            
             for (const result of relevantResults.slice(0, 2)) {
               const resultSlug = result.id.replace('hse-', '');
               const epSlug = `${resultSlug}-episode-${episodeNum}`;
@@ -289,6 +301,7 @@ async function streamHandler(args) {
                 if (streams && streams.length > 0) {
                   const mappedStreams = streams.map(s => ({ ...s, provider: 'HentaiSea' }));
                   allStreams.push(...mappedStreams);
+                  logger.info(`[HentaiSea] Found ${streams.length} streams via search for: ${resultSlug}`);
                   foundViaSearch = true;
                   break;
                 }
@@ -304,6 +317,7 @@ async function streamHandler(args) {
       
       if (!foundProviders.has('HentaiTV') && searchTerm.length >= 3) {
         try {
+          logger.info(`[HentaiTV] Trying search fallback for: "${searchTerm}"`);
           // HentaiTV uses WordPress API for search
           const searchUrl = `https://hentai.tv/wp-json/wp/v2/episodes?search=${encodeURIComponent(searchTerm)}&per_page=10`;
           const response = await require('axios').get(searchUrl, { timeout: 5000 });
@@ -328,6 +342,7 @@ async function streamHandler(args) {
                       if (streams && streams.length > 0) {
                         const mappedStreams = streams.map(s => ({ ...s, provider: 'HentaiTV' }));
                         allStreams.push(...mappedStreams);
+                        logger.info(`[HentaiTV] Found ${streams.length} streams via search for: ${epSlug}`);
                         break;
                       }
                     } catch (e) {
@@ -358,16 +373,26 @@ async function streamHandler(args) {
           titleLabel = `Episode ${episodeNum}`;
         }
         
+        // Add RAW indicator for HentaiMama streams without subtitles
+        if (stream.isRaw) {
+          titleLabel += ' - RAW';
+        }
+        
         // Determine the final URL - use proxy for streams that need it
         let finalUrl = stream.url;
         if (stream.needsProxy && stream.proxyType === 'jwplayer' && stream.jwplayerUrl) {
           // HentaiSea: Use proxy with jwplayer URL to get fresh auth token each time
           const baseUrl = config.server.baseUrl;
           finalUrl = `${baseUrl}/video-proxy?jwplayer=${encodeURIComponent(stream.jwplayerUrl)}`;
+          logger.info(`Stream: ${stream.provider} | ${titleLabel} -> PROXIED (jwplayer) via ${baseUrl}`);
         } else if (stream.needsProxy) {
           // Generic proxy for other IP-restricted URLs
           const baseUrl = config.server.baseUrl;
           finalUrl = `${baseUrl}/video-proxy?episodeId=${encodeURIComponent(slug)}`;
+          logger.info(`Stream: ${stream.provider} | ${titleLabel} -> PROXIED (episodeId) via ${baseUrl}`);
+        } else {
+          // Log stream URL for debugging
+          logger.info(`Stream: ${stream.provider} | ${titleLabel} -> ${stream.url.substring(0, 100)}...`);
         }
         
         return {
@@ -377,7 +402,7 @@ async function streamHandler(args) {
         };
       });
 
-      logger.info(`✅ Stream "${id}": ${stremioStreams.length} streams from ${[...foundProviders].join(', ')}`);
+      logger.info(`Returning ${stremioStreams.length} total streams for ${id}`);
       return { streams: stremioStreams };
     });
   } catch (error) {

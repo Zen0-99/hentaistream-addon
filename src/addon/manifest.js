@@ -426,18 +426,17 @@ function getBaseManifest() {
         extra: [{ name: 'skip' }, { name: 'genre', options: YEAR_OPTIONS }],
         behaviorHints: { notForHome: true }
       },
-      // All Hentai - with genre filter and search
+      // All Hentai - with genre filter (NO search - handled by hentai-search)
       {
         type: 'hentai',
         id: 'hentai-all',
         name: 'All Hentai',
-        extra: [{ name: 'search' }, { name: 'skip' }, { name: 'genre', options: DYNAMIC_GENRE_OPTIONS }],
+        extra: [{ name: 'skip' }, { name: 'genre', options: DYNAMIC_GENRE_OPTIONS }],
         behaviorHints: { notForHome: true }
       },
       // Search-only catalog (isRequired: true means this catalog ONLY handles search)
       // This ensures Stremio always routes search queries here
-      // Pattern from Anime Kitsu addon
-      // HIDDEN: Does not appear in catalog list, only used for search routing
+      // Hidden from catalog view but functional for search routing
       {
         type: 'hentai',
         id: 'hentai-search',
@@ -446,9 +445,7 @@ function getBaseManifest() {
           { name: 'search', isRequired: true },
           { name: 'skip' }
         ],
-        // Completely hide from UI - pageSize: 0 prevents it from showing in catalog list
-        // while still allowing it to handle search requests
-        pageSize: 0,
+        // Hide from all catalog views - only used for search routing
         behaviorHints: { notForHome: true }
       },
     ],

@@ -864,7 +864,33 @@ class HentaiMamaScraper {
           }
         }
         
-        // Ensure releaseInfo is set if year exists
+        // Ensure releaseInfo is set - PREFER episode dates over page metadata
+        // This fixes HentaiMama bug where some series pages show "today's date"
+        // instead of actual release year
+        if (series.episodes && series.episodes.length > 0) {
+          // Find earliest episode date for accurate year
+          let earliestDate = null;
+          for (const ep of series.episodes) {
+            if (ep.released) {
+              const epDate = parseDate(ep.released);
+              if (epDate && (!earliestDate || epDate < earliestDate)) {
+                earliestDate = epDate;
+              }
+            }
+          }
+          if (earliestDate) {
+            const derivedYear = earliestDate.getFullYear();
+            // Only override if the page year seems wrong (e.g., current year for old content)
+            const currentYear = new Date().getFullYear();
+            if (!series.year || (series.year == currentYear && derivedYear < currentYear)) {
+              series.year = String(derivedYear);
+              series.releaseInfo = String(derivedYear);
+              logger.debug(`[HentaiMama] Derived year ${derivedYear} from episodes for ${series.name}`);
+            }
+          }
+        }
+        
+        // Fallback: ensure releaseInfo is set if year exists
         if (series.year && !series.releaseInfo) {
           series.releaseInfo = series.year;
         }
@@ -924,6 +950,125 @@ class HentaiMamaScraper {
 
     } catch (error) {
       logger.error('Error fetching HentaiMama catalog:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get monthly releases from the new-monthly-hentai page
+   * This page shows ALL recent episodes (not just series) ordered by date
+   * Used by incremental update to find new content including new episodes of existing series
+   * @param {number} page - Page number (1-indexed), defaults to 1
+   * @returns {Promise<Array>} Array of episode info objects with series slug and episode number
+   */
+  async getMonthlyReleases(page = 1) {
+    try {
+      const url = page === 1 
+        ? `${this.baseUrl}/new-monthly-hentai/` 
+        : `${this.baseUrl}/new-monthly-hentai/page/${page}/`;
+      
+      logger.info(`[HentaiMama] Fetching monthly releases page ${page}: ${url}`);
+      
+      const response = await this.makeRequest(url);
+      const $ = cheerio.load(response.data);
+      
+      const episodes = [];
+      
+      // Find all episode cards - look for links to /episodes/
+      $('article, .post, .episode-card').each((i, elem) => {
+        const $elem = $(elem);
+        
+        // Find link to episode
+        const link = $elem.find('a[href*="/episodes/"]').first();
+        const episodeUrl = link.attr('href');
+        if (!episodeUrl) return;
+        
+        // Extract episode slug and derive series info
+        const episodeMatch = episodeUrl.match(/\/episodes\/([\w-]+)\/?$/);
+        if (!episodeMatch) return;
+        
+        const episodeSlug = episodeMatch[1];
+        
+        // Extract series slug by removing episode number suffix
+        const seriesSlug = episodeSlug.replace(/-episode-\d+$/, '');
+        
+        // Extract episode number
+        const epNumMatch = episodeSlug.match(/-episode-(\d+)$/);
+        const episodeNumber = epNumMatch ? parseInt(epNumMatch[1]) : 1;
+        
+        // Extract title - series name
+        let title = link.text().trim() ||
+                   $elem.find('h2, h3').first().text().trim() ||
+                   link.attr('title') || '';
+        
+        // Clean up title - remove "Episode X" pattern
+        title = title.replace(/Episode\s+\d+/gi, '').trim();
+        title = title.replace(/\s+/g, ' ').trim();
+        
+        // Extract poster
+        let poster = $elem.find('img').first().attr('data-src') ||
+                    $elem.find('img').first().attr('src') ||
+                    '';
+        
+        // Filter out placeholder images
+        if (poster && (poster.includes('data:image') || poster.includes('placeholder') || poster.length < 20)) {
+          poster = '';
+        }
+        
+        // Make sure poster is absolute URL
+        if (poster && !poster.startsWith('http')) {
+          poster = poster.startsWith('//') ? `https:${poster}` : `${this.baseUrl}${poster}`;
+        }
+        
+        // Extract rating if present
+        let rating = null;
+        const ratingText = $elem.text().match(/(\d+(?:\.\d+)?)\s*$/);
+        if (ratingText) {
+          const parsed = parseFloat(ratingText[1]);
+          if (parsed >= 1 && parsed <= 10) {
+            rating = parsed;
+          }
+        }
+        
+        // Check if RAW (no subtitles)
+        const isRaw = $elem.find('.status-raw').length > 0 || 
+                     $elem.text().includes('RAW');
+        
+        // Extract date if present
+        let releaseDate = null;
+        const dateText = $elem.find('.date, span.date').text().trim() ||
+                        $elem.parent().find('.date, span.date').text().trim();
+        if (dateText) {
+          // Try to parse date like "Dec. 31, 2025"
+          const dateMatch = dateText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+(\d+),?\s+(\d{4})/i);
+          if (dateMatch) {
+            const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+            const month = months[dateMatch[1].toLowerCase().substring(0, 3)];
+            const day = parseInt(dateMatch[2]);
+            const year = parseInt(dateMatch[3]);
+            releaseDate = new Date(year, month, day).toISOString();
+          }
+        }
+        
+        episodes.push({
+          episodeSlug,
+          seriesSlug,
+          episodeNumber,
+          seriesId: `hmm-${seriesSlug}`,
+          title: title || seriesSlug.replace(/-/g, ' '),
+          poster,
+          rating,
+          isRaw,
+          releaseDate,
+          episodeUrl,
+        });
+      });
+      
+      logger.info(`[HentaiMama] Found ${episodes.length} episodes on monthly releases page ${page}`);
+      return episodes;
+      
+    } catch (error) {
+      logger.error(`[HentaiMama] Error fetching monthly releases:`, error.message);
       return [];
     }
   }
@@ -1440,7 +1585,16 @@ class HentaiMamaScraper {
       const pageResponse = await this.makeRequest(pageUrl);
       const $ = cheerio.load(pageResponse.data);
 
-      // Step 2: Find AJAX data (jwplayerOptions or similar)
+      // Step 2: Check if this episode is RAW (no subtitles)
+      // RAW status is indicated by <span class="status-raw"> containing "RAW"
+      const isRaw = $('.status-raw').length > 0 || 
+                    $('span:contains("RAW")').filter((i, el) => $(el).text().trim() === 'RAW').length > 0;
+      
+      if (isRaw) {
+        logger.info(`[HentaiMama] Episode ${cleanId} is RAW (no subtitles)`);
+      }
+
+      // Step 3: Find AJAX data (jwplayerOptions or similar)
       const scriptContent = $('script').toArray()
         .map(el => $(el).html())
         .join('\n');
@@ -1571,7 +1725,8 @@ class HentaiMamaScraper {
           .map(source => ({
             url: source.file,
             quality: source.label || 'Unknown',
-            type: source.type || 'video/mp4'
+            type: source.type || 'video/mp4',
+            isRaw: isRaw  // Pass RAW status to stream handler
           }))
           .sort((a, b) => {
             const aHeight = parseInt(a.quality) || 0;
@@ -1579,7 +1734,7 @@ class HentaiMamaScraper {
             return bHeight - aHeight;
           });
 
-        logger.info(`Found ${streams.length} streams for ${cleanId}`);
+        logger.info(`Found ${streams.length} streams for ${cleanId}${isRaw ? ' (RAW)' : ''}`);
         return streams;
       }
 

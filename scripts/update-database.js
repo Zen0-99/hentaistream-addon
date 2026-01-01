@@ -5,14 +5,16 @@
  * Designed to run daily at midnight to add new content without full rebuild.
  * 
  * Strategy:
- * - Scrapes first pages of each provider looking for new content
- * - Stops when finding 2 consecutive existing entries (already in database)
+ * - HentaiMama: Uses new-monthly-hentai page which shows ALL recent episodes
+ *   - Scans entire first page to catch new episodes of existing series
+ *   - Detects both new series AND new episodes for existing series
+ * - HentaiTV/HentaiSea: Uses standard catalog with consecutive existing detection
  * - Merges new content with existing database
  * - Updates filter-options.json with new counts
  * 
  * Provider-specific approaches:
  * - HentaiTV: https://hentai.tv/?s= - first entries are newest
- * - HentaiMama: https://hentaimama.io - homepage "monthly releases" section
+ * - HentaiMama: https://hentaimama.io/new-monthly-hentai/ - monthly releases page
  * - HentaiSea: https://hentaisea.com/latest-series/ - first page
  * 
  * Usage: 
@@ -310,25 +312,31 @@ async function fetchMetadata(scraper, seriesId) {
  * 
  * NOTE: HentaiSea is handled specially - we scan ALL items on page 1
  * because their "latest" page may have new items mixed with old ones.
+ * HentaiMama uses the new-monthly-hentai page which shows individual episodes.
  * Other providers use consecutive existing detection to stop early.
  */
 async function scanProvider(scraper, providerName, existingCatalog, normalizedIndex) {
   const newItems = [];
+  const updatedItems = []; // Series with new episodes
   let consecutiveExisting = 0;
   let page = 1;
   
-  // HentaiSea: Scan all items on page 1, don't use consecutive threshold
+  // HentaiSea and HentaiMama: Scan all items on page 1, don't use consecutive threshold
   const isHentaiSea = providerName === 'hentaisea';
-  const maxPages = isHentaiSea ? 1 : CONFIG.maxPagesToScan; // HentaiSea: first page only
+  const isHentaiMama = providerName === 'hentaimama';
+  const maxPages = (isHentaiSea || isHentaiMama) ? 1 : CONFIG.maxPagesToScan;
   
   logger.info(`\n📡 Scanning ${providerName} for new content...`);
   if (isHentaiSea) {
     logger.info(`  (HentaiSea: scanning ALL items on page 1)`);
   }
+  if (isHentaiMama) {
+    logger.info(`  (HentaiMama: using new-monthly-hentai page for latest episodes)`);
+  }
   
   while (page <= maxPages) {
-    // For non-HentaiSea, check consecutive threshold
-    if (!isHentaiSea && consecutiveExisting >= CONFIG.consecutiveExistingThreshold) {
+    // For standard providers, check consecutive threshold
+    if (!isHentaiSea && !isHentaiMama && consecutiveExisting >= CONFIG.consecutiveExistingThreshold) {
       break;
     }
     
@@ -336,15 +344,75 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
       let items = [];
       
       // Provider-specific catalog fetching
-      if (providerName === 'hentaitv') {
+      if (isHentaiMama) {
+        // HentaiMama: Use new-monthly-hentai page which shows individual episodes
+        const monthlyEpisodes = await withRetry(() => hentaimamaScraper.getMonthlyReleases(page));
+        
+        // Group episodes by series to detect new series vs new episodes
+        const seriesMap = new Map();
+        for (const ep of monthlyEpisodes) {
+          if (!seriesMap.has(ep.seriesSlug)) {
+            seriesMap.set(ep.seriesSlug, {
+              id: ep.seriesId,
+              name: ep.title,
+              poster: ep.poster,
+              episodes: [],
+              latestEpisode: ep.episodeNumber,
+              isRaw: ep.isRaw,
+              releaseDate: ep.releaseDate,
+            });
+          }
+          const series = seriesMap.get(ep.seriesSlug);
+          series.episodes.push(ep.episodeNumber);
+          if (ep.episodeNumber > series.latestEpisode) {
+            series.latestEpisode = ep.episodeNumber;
+          }
+          if (ep.releaseDate && (!series.releaseDate || ep.releaseDate > series.releaseDate)) {
+            series.releaseDate = ep.releaseDate;
+          }
+        }
+        
+        // Check each series - new or has new episodes?
+        for (const [slug, seriesInfo] of seriesMap) {
+          const existing = findExistingEntry({ name: seriesInfo.name }, existingCatalog, normalizedIndex);
+          
+          if (existing) {
+            // Check if there are new episodes
+            const existingEpisodeCount = existing.episodes?.length || 0;
+            if (seriesInfo.latestEpisode > existingEpisodeCount) {
+              logger.debug(`  📺 New episodes for "${seriesInfo.name}": ${existingEpisodeCount} → ${seriesInfo.latestEpisode}`);
+              updatedItems.push({
+                existing,
+                newEpisodeCount: seriesInfo.latestEpisode,
+                lastUpdated: seriesInfo.releaseDate,
+              });
+            } else {
+              logger.debug(`  ↩️ Up to date: "${seriesInfo.name}" (${existingEpisodeCount} episodes)`);
+            }
+          } else {
+            // New series
+            newItems.push({
+              id: seriesInfo.id,
+              name: seriesInfo.name,
+              poster: seriesInfo.poster,
+              lastUpdated: seriesInfo.releaseDate,
+            });
+            logger.debug(`  ✨ New: "${seriesInfo.name}"`);
+          }
+        }
+        
+        // HentaiMama is done after processing monthly releases
+        break;
+        
+      } else if (providerName === 'hentaitv') {
         // HentaiTV: Use search page for newest content
         items = await withRetry(() => hentaitvScraper.getCatalogFromSearchPage(page));
-      } else if (providerName === 'hentaisea') {
+      } else if (isHentaiSea) {
         // HentaiSea: Use catalog with 'recent' sort for newest content
         const result = await withRetry(() => hentaiseaScraper.getCatalog(page, null, 'recent'));
         items = Array.isArray(result) ? result : (result?.items || result?.metas || []);
       } else {
-        // HentaiMama: Standard catalog with 'recent' sort
+        // Other providers: Standard catalog with 'recent' sort
         const result = await withRetry(() => scraper.getCatalog(page, null, 'recent'));
         items = Array.isArray(result) ? result : (result?.items || result?.metas || []);
       }
@@ -385,10 +453,10 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
   }
   
   // Fetch full metadata for new items in parallel batches
+  const enrichedItems = [];
   if (newItems.length > 0) {
     logger.info(`  📥 Fetching metadata for ${newItems.length} new series...`);
     
-    const enrichedItems = [];
     for (let i = 0; i < newItems.length; i += CONFIG.parallelBatchSize) {
       const batch = newItems.slice(i, i + CONFIG.parallelBatchSize);
       const results = await Promise.all(
@@ -403,11 +471,13 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
       await sleep(CONFIG.delayBetweenRequests);
     }
     console.log('');
-    
-    return enrichedItems;
   }
   
-  return [];
+  // Return both new items and updated items (series with new episodes)
+  return {
+    newItems: enrichedItems,
+    updatedItems: updatedItems, // Series that need episode count updates
+  };
 }
 
 /**
@@ -584,6 +654,7 @@ async function runIncrementalUpdate() {
   
   // Scan each provider
   const allNewItems = [];
+  const allUpdatedItems = []; // Series with new episodes
   
   const providers = [
     { scraper: hentaimamaScraper, name: 'hentaimama' },
@@ -593,11 +664,18 @@ async function runIncrementalUpdate() {
   
   for (const { scraper, name } of providers) {
     try {
-      const newItems = await scanProvider(scraper, name, existingCatalog, normalizedIndex);
+      const result = await scanProvider(scraper, name, existingCatalog, normalizedIndex);
+      const { newItems = [], updatedItems = [] } = result;
+      
       if (newItems.length > 0) {
         allNewItems.push(...newItems);
         logger.info(`  ✅ ${name}: Found ${newItems.length} new series`);
-      } else {
+      }
+      if (updatedItems.length > 0) {
+        allUpdatedItems.push(...updatedItems);
+        logger.info(`  📺 ${name}: Found ${updatedItems.length} series with new episodes`);
+      }
+      if (newItems.length === 0 && updatedItems.length === 0) {
         logger.info(`  ✅ ${name}: No new content`);
       }
     } catch (error) {
@@ -612,19 +690,51 @@ async function runIncrementalUpdate() {
   console.log('                         📊 Summary');
   console.log('══════════════════════════════════════════════════════════════\n');
   
-  if (allNewItems.length === 0) {
+  const hasChanges = allNewItems.length > 0 || allUpdatedItems.length > 0;
+  
+  if (!hasChanges) {
     logger.info('✅ Database is up to date - no new content found');
   } else {
-    logger.info(`✨ Found ${allNewItems.length} new series to add`);
+    if (allNewItems.length > 0) {
+      logger.info(`✨ Found ${allNewItems.length} new series to add`);
+      for (const item of allNewItems) {
+        logger.info(`   • ${item.name} (${item.id})`);
+      }
+    }
     
-    for (const item of allNewItems) {
-      logger.info(`   • ${item.name} (${item.id})`);
+    if (allUpdatedItems.length > 0) {
+      logger.info(`📺 Found ${allUpdatedItems.length} series with new episodes`);
+      for (const update of allUpdatedItems) {
+        const oldCount = update.existing.episodes?.length || 0;
+        logger.info(`   • ${update.existing.name}: ${oldCount} → ${update.newEpisodeCount} episodes`);
+      }
     }
     
     if (!DRY_RUN) {
-      // Add new items to catalog
+      // Start with existing catalog
       const updatedCatalog = [...existingCatalog];
       
+      // Update existing series with new episodes
+      for (const update of allUpdatedItems) {
+        const idx = updatedCatalog.findIndex(s => s.id === update.existing.id);
+        if (idx !== -1) {
+          // Generate episode entries for the new count
+          const episodes = [];
+          for (let i = 1; i <= update.newEpisodeCount; i++) {
+            const slug = updatedCatalog[idx].providerSlugs?.hmm || updatedCatalog[idx].id?.replace('hmm-', '');
+            episodes.push({
+              id: `${slug}-episode-${i}`,
+              name: `Episode ${i}`,
+              episodeNumber: i,
+            });
+          }
+          updatedCatalog[idx].episodes = episodes;
+          updatedCatalog[idx].lastUpdated = update.lastUpdated || new Date().toISOString();
+          logger.debug(`Updated episodes for ${updatedCatalog[idx].name}`);
+        }
+      }
+      
+      // Add new items to catalog
       for (const newItem of allNewItems) {
         // Initialize tracking fields
         const prefix = newItem.id?.split('-')[0] || 'unknown';
@@ -659,6 +769,9 @@ async function runIncrementalUpdate() {
       updateFilterOptions(updatedCatalog);
       
       logger.info(`\n✅ Database updated: ${existingCatalog.length} → ${updatedCatalog.length} series`);
+      if (allUpdatedItems.length > 0) {
+        logger.info(`   ${allUpdatedItems.length} series updated with new episodes`);
+      }
     } else {
       logger.info('\n🔍 DRY RUN - Changes not saved');
     }
