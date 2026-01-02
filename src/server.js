@@ -15,15 +15,6 @@ const cache = require('./cache');
 const slugRegistry = require('./cache/slugRegistry');
 const databaseLoader = require('./utils/databaseLoader');
 
-// Import incremental database update (for midnight updates)
-let runIncrementalUpdate = null;
-try {
-  const updateScript = require('../scripts/update-database');
-  runIncrementalUpdate = updateScript.runIncrementalUpdate;
-} catch (e) {
-  // Script may not be available in all environments
-}
-
 // Track manifest prewarm status to avoid duplicate prewarming
 let manifestPrewarmTriggered = false;
 
@@ -114,6 +105,8 @@ async function prewarmCatalogsOnManifest() {
         ];
         
         await Promise.allSettled(promises);
+        logger.info(`✓ Top Rated page ${page} pre-warmed`);
+        
         if (page < PAGES_TO_PREWARM) {
           await new Promise(resolve => setTimeout(resolve, DELAY_MS));
         }
@@ -121,6 +114,7 @@ async function prewarmCatalogsOnManifest() {
     }
     
     // Always warm New Releases (catches content since last database build)
+    logger.info(`📅 Pre-warming New Releases (${PAGES_TO_PREWARM} page(s))...`);
     for (let page = 1; page <= PAGES_TO_PREWARM; page++) {
       const promises = [
         cache.prewarm(
@@ -141,12 +135,15 @@ async function prewarmCatalogsOnManifest() {
       ];
       
       await Promise.allSettled(promises);
+      logger.info(`✓ New Releases page ${page} pre-warmed`);
+      
       if (page < PAGES_TO_PREWARM) {
         await new Promise(resolve => setTimeout(resolve, DELAY_MS));
       }
     }
     
     logger.info('✅ Catalog pre-warming complete!');
+    logger.info(`Cache stats: ${JSON.stringify(cache.getStats())}`);
   } catch (error) {
     logger.warn(`Catalog pre-warm error: ${error.message}`);
   }
@@ -172,16 +169,9 @@ app.use((req, res, next) => {
 // Serve static files from public folder (logo, etc.)
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Request logging - show essential workflow
+// Log all requests - detailed logging to catch 404 issues
 app.use((req, res, next) => {
-  // Skip logging for health checks and static files
-  const skipPaths = ['/health', '/logo.png', '/favicon.ico'];
-  if (skipPaths.some(p => req.path === p)) {
-    return next();
-  }
-  
-  // Log the request path for workflow visibility
-  logger.info(`→ ${req.method} ${req.path}`);
+  logger.info(`${req.method} ${req.path} | Query: ${JSON.stringify(req.query)} | Params: ${JSON.stringify(req.params)}`);
   next();
 });
 
@@ -228,7 +218,8 @@ function setupSelfPing() {
       
       const startTime = Date.now();
       client.get(pingUrl, (res) => {
-        // Silent success - only log errors
+        const duration = Date.now() - startTime;
+        logger.info(`Self-ping successful (${res.statusCode}) - ${duration}ms`);
       }).on('error', (err) => {
         logger.error('Self-ping failed:', err.message);
       });
@@ -239,97 +230,9 @@ function setupSelfPing() {
 
   // Do an initial ping after 1 minute
   setTimeout(() => {
-    // Trigger first ping silently
+    logger.info('Performing initial self-ping...');
   }, 60000);
 }
-
-// Midnight database update scheduler (similar to self-ping)
-function setupMidnightUpdate() {
-  // Only enable in production (Render) - local dev uses manual updates
-  if (config.server.env !== 'production') {
-    logger.info('⏭ Midnight update disabled (not in production mode)');
-    return;
-  }
-  
-  // Check if update function is available
-  if (!runIncrementalUpdate) {
-    logger.warn('⚠️ Midnight update disabled (update script not available)');
-    return;
-  }
-  
-  logger.info('🌙 Midnight database update enabled');
-  
-  // Check every hour if it's midnight (UTC)
-  const CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour
-  let lastUpdateDate = null;
-  
-  async function checkAndRunUpdate() {
-    const now = new Date();
-    const utcHour = now.getUTCHours();
-    const utcDate = now.toISOString().split('T')[0]; // YYYY-MM-DD
-    
-    // Run at midnight UTC (hour 0) and only once per day
-    if (utcHour === 0 && lastUpdateDate !== utcDate) {
-      lastUpdateDate = utcDate;
-      logger.info(`🌙 Starting midnight database update (${utcDate})...`);
-      
-      try {
-        await runIncrementalUpdate();
-        logger.info('✅ Midnight database update completed');
-        
-        // Force reload the database after update
-        await databaseLoader.loadDatabase(true);
-        logger.info('📦 Database reloaded after update');
-      } catch (error) {
-        logger.error(`❌ Midnight update failed: ${error.message}`);
-      }
-    }
-  }
-  
-  // Check immediately on startup (in case server starts at midnight)
-  setTimeout(checkAndRunUpdate, 5000);
-  
-  // Then check every hour
-  setInterval(checkAndRunUpdate, CHECK_INTERVAL);
-}
-
-// Admin endpoint to trigger database update manually
-app.post('/admin/database/update', async (req, res) => {
-  if (!runIncrementalUpdate) {
-    return res.status(503).json({ success: false, error: 'Update script not available' });
-  }
-  
-  try {
-    logger.info('[Admin] Manual database update triggered');
-    await runIncrementalUpdate();
-    await databaseLoader.loadDatabase(true); // Force reload
-    const stats = databaseLoader.getStats();
-    logger.info('[Admin] Database update completed');
-    res.json({ success: true, message: 'Database updated', stats });
-  } catch (error) {
-    logger.error(`[Admin] Database update failed: ${error.message}`);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Also allow GET for easy browser access
-app.get('/admin/database/update', async (req, res) => {
-  if (!runIncrementalUpdate) {
-    return res.status(503).json({ success: false, error: 'Update script not available' });
-  }
-  
-  try {
-    logger.info('[Admin] Manual database update triggered (via browser)');
-    await runIncrementalUpdate();
-    await databaseLoader.loadDatabase(true); // Force reload
-    const stats = databaseLoader.getStats();
-    logger.info('[Admin] Database update completed');
-    res.json({ success: true, message: 'Database updated', stats });
-  } catch (error) {
-    logger.error(`[Admin] Database update failed: ${error.message}`);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
 // Admin endpoint to clear all caches (use after deploying fixes)
 app.post('/admin/cache/clear', async (req, res) => {
@@ -353,6 +256,144 @@ app.get('/admin/cache/clear', async (req, res) => {
     logger.error(`[Admin] Cache clear failed: ${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+// ============ INCREMENTAL DATABASE UPDATE SYSTEM ============
+// Runs daily at midnight to add new content and update filter counts
+
+// Track last update time and status
+let lastIncrementalUpdate = null;
+let incrementalUpdateInProgress = false;
+let nextScheduledUpdate = null;
+
+/**
+ * Run incremental database update
+ * Adds new content from providers and updates filter counts
+ */
+async function runIncrementalDatabaseUpdate() {
+  if (incrementalUpdateInProgress) {
+    logger.warn('[IncrementalUpdate] Update already in progress, skipping');
+    return { success: false, error: 'Update already in progress' };
+  }
+  
+  incrementalUpdateInProgress = true;
+  const startTime = Date.now();
+  
+  try {
+    logger.info('[IncrementalUpdate] Starting incremental database update...');
+    
+    // Import the update script's main function
+    const { runIncrementalUpdate } = require('../scripts/update-database');
+    
+    // Run the update (this modifies data/catalog.json and filter-options.json)
+    await runIncrementalUpdate();
+    
+    // Reload the database into memory
+    logger.info('[IncrementalUpdate] Reloading database into memory...');
+    await databaseLoader.loadDatabase(true); // Force reload
+    
+    const duration = Date.now() - startTime;
+    const stats = databaseLoader.getStats();
+    
+    lastIncrementalUpdate = {
+      timestamp: new Date().toISOString(),
+      duration,
+      success: true,
+      totalSeries: stats?.totalSeries || 0
+    };
+    
+    logger.info(`[IncrementalUpdate] Update completed in ${duration}ms. Database now has ${stats?.totalSeries || 0} series`);
+    
+    // Clear manifest/catalog caches to reflect new counts
+    await cache.flushAll();
+    logger.info('[IncrementalUpdate] Caches cleared to reflect updated counts');
+    
+    return { success: true, duration, totalSeries: stats?.totalSeries || 0 };
+  } catch (error) {
+    logger.error(`[IncrementalUpdate] Update failed: ${error.message}`);
+    lastIncrementalUpdate = {
+      timestamp: new Date().toISOString(),
+      success: false,
+      error: error.message
+    };
+    return { success: false, error: error.message };
+  } finally {
+    incrementalUpdateInProgress = false;
+  }
+}
+
+/**
+ * Calculate milliseconds until next midnight
+ */
+function msUntilMidnight() {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setDate(midnight.getDate() + 1);
+  midnight.setHours(0, 0, 0, 0);
+  return midnight.getTime() - now.getTime();
+}
+
+/**
+ * Setup daily midnight update scheduler
+ */
+function setupDailyUpdate() {
+  // Only enable in production
+  if (config.server.env !== 'production') {
+    logger.info('[IncrementalUpdate] Daily update disabled (not in production mode)');
+    return;
+  }
+  
+  const scheduleNextUpdate = () => {
+    const msToMidnight = msUntilMidnight();
+    nextScheduledUpdate = new Date(Date.now() + msToMidnight);
+    
+    logger.info(`[IncrementalUpdate] Next update scheduled for ${nextScheduledUpdate.toISOString()} (in ${Math.round(msToMidnight / 60000)} minutes)`);
+    
+    setTimeout(async () => {
+      logger.info('[IncrementalUpdate] Running scheduled midnight update...');
+      await runIncrementalDatabaseUpdate();
+      
+      // Schedule next day's update
+      scheduleNextUpdate();
+    }, msToMidnight);
+  };
+  
+  scheduleNextUpdate();
+  logger.info('[IncrementalUpdate] Daily midnight update scheduler enabled');
+}
+
+// Admin endpoint to manually trigger incremental update
+app.post('/admin/update', async (req, res) => {
+  try {
+    logger.info('[Admin] Manual incremental update triggered via API');
+    const result = await runIncrementalDatabaseUpdate();
+    res.json(result);
+  } catch (error) {
+    logger.error(`[Admin] Update failed: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Allow GET for easy browser access
+app.get('/admin/update', async (req, res) => {
+  try {
+    logger.info('[Admin] Manual incremental update triggered via API (GET)');
+    const result = await runIncrementalDatabaseUpdate();
+    res.json(result);
+  } catch (error) {
+    logger.error(`[Admin] Update failed: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Status endpoint to check update status
+app.get('/admin/update/status', (req, res) => {
+  res.json({
+    lastUpdate: lastIncrementalUpdate,
+    updateInProgress: incrementalUpdateInProgress,
+    nextScheduledUpdate: nextScheduledUpdate?.toISOString() || null,
+    database: databaseLoader.isReady() ? databaseLoader.getStats() : null
+  });
 });
 
 // API endpoint for configuration options (full lists)
@@ -443,7 +484,7 @@ app.get('/video-proxy', async (req, res) => {
         const fileMatch = jwResponse.data.match(/"file"\s*:\s*"([^"]+)"/);
         if (fileMatch) {
           videoUrl = fileMatch[1].replace(/\\\//g, '/');
-
+          logger.info(`Video proxy: Got fresh URL: ${videoUrl.substring(0, 80)}...`);
         }
       } catch (err) {
         logger.error(`Video proxy: Failed to get jwplayer auth: ${err.message}`);
@@ -452,6 +493,8 @@ app.get('/video-proxy', async (req, res) => {
     } 
     // If we have an episode ID, fetch the episode page and get jwplayer URL
     else if (episodeId) {
+      logger.info(`Video proxy: Fetching episode ${episodeId}...`);
+      
       const slug = episodeId.replace(/^hse-/, '');
       const episodeUrl = `https://hentaisea.com/episodes/${slug}/`;
       
@@ -502,7 +545,7 @@ app.get('/video-proxy', async (req, res) => {
             const fileMatch = jwResponse.data.match(/"file"\s*:\s*"([^"]+)"/);
             if (fileMatch) {
               videoUrl = fileMatch[1].replace(/\\\//g, '/');
-
+              logger.info(`Video proxy: Got fresh URL from episode: ${videoUrl.substring(0, 80)}...`);
             }
           }
         }
@@ -517,6 +560,8 @@ app.get('/video-proxy', async (req, res) => {
     }
     
     // Now proxy the actual video
+    logger.info(`Video proxy: Streaming from ${videoUrl.substring(0, 80)}...`);
+    
     const videoResponse = await axios({
       method: 'get',
       url: videoUrl,
@@ -632,6 +677,8 @@ app.get('/manifest.json', async (req, res) => {
       }));
     }
     
+    logger.info(`Serving manifest (${JSON.stringify(manifest).length} bytes)`);
+    
     // Trigger catalog pre-warming in background when manifest is served (addon install)
     prewarmCatalogsOnManifest();
     
@@ -702,6 +749,8 @@ app.get('/:config/manifest.json', async (req, res) => {
       });
     }
     
+    logger.info(`Serving configured manifest (${JSON.stringify(manifest).length} bytes)`);
+    
     // Trigger catalog pre-warming in background when manifest is served (addon install)
     prewarmCatalogsOnManifest();
     
@@ -752,6 +801,8 @@ app.get('/catalog/:type/:id/:extraArgs.json', async (req, res) => {
     // Merge with query params
     Object.assign(extra, req.query);
     
+    logger.info(`Catalog with extra: type=${type}, id=${id}, extraArgs=${extraArgs}, extra=${JSON.stringify(extra)}`);
+    
     const result = await catalogHandler({ type, id, extra, config: userConfig });
     res.json(result);
   } catch (error) {
@@ -764,6 +815,7 @@ app.get('/catalog/:type/:id/:extraArgs.json', async (req, res) => {
 app.get('/:config/catalog/:type/:id.json', async (req, res) => {
   try {
     const configStr = req.params.config;
+    logger.info(`Path-based catalog request: config=${configStr}, type=${req.params.type}, id=${req.params.id}, query=${JSON.stringify(req.query)}`);
     const userConfig = parseConfig(
       Object.fromEntries(new URLSearchParams(configStr).entries())
     );
@@ -786,6 +838,7 @@ app.get('/:config/catalog/:type/:id.json', async (req, res) => {
 app.get('/:config/catalog/:type/:id/:extraArgs.json', async (req, res) => {
   try {
     const configStr = req.params.config;
+    logger.info(`Path-based catalog with extra: config=${configStr}, type=${req.params.type}, id=${req.params.id}, extraArgs=${req.params.extraArgs}`);
     const userConfig = parseConfig(
       Object.fromEntries(new URLSearchParams(configStr).entries())
     );
@@ -803,6 +856,8 @@ app.get('/:config/catalog/:type/:id/:extraArgs.json', async (req, res) => {
     
     // Merge with query params
     Object.assign(extra, req.query);
+    
+    logger.info(`Parsed extra: ${JSON.stringify(extra)}`);
     
     const result = await catalogHandler({ type, id, extra, config: userConfig });
     res.json(result);
@@ -884,33 +939,25 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const server = app.listen(config.server.port, () => {
-  // Use console.log for startup (winston has buffering issues with redirected output)
-  console.log(`========================================`);
-  console.log(`${config.addon.name} v${config.addon.version}`);
-  console.log(`========================================`);
-  console.log(`Server running on port ${config.server.port}`);
-  console.log(`Environment: ${config.server.env}`);
-  console.log(`Manifest URL: http://localhost:${config.server.port}/manifest.json`);
-  console.log(`Install URL: stremio://localhost:${config.server.port}/manifest.json`);
-  console.log(`========================================`);
+const server = app.listen(config.server.port, async () => {
+  logger.info(`========================================`);
+  logger.info(`${config.addon.name} v${config.addon.version}`);
+  logger.info(`========================================`);
+  logger.info(`Server running on port ${config.server.port}`);
+  logger.info(`Environment: ${config.server.env}`);
+  logger.info(`Manifest URL: http://localhost:${config.server.port}/manifest.json`);
+  logger.info(`Install URL: stremio://localhost:${config.server.port}/manifest.json`);
+  logger.info(`========================================`);
   
-  // Run async initialization in background (don't block startup logs)
-  (async () => {
-    try {
-      // Initialize pre-bundled database (if available)
-      await initializeDatabase();
+  // Initialize pre-bundled database (if available)
+  await initializeDatabase();
   
-      // Pre-warm connection pools (HTTP/2 keep-alive)
-      try {
-        await httpClient.prewarmConnections();
-      } catch (error) {
-        logger.warn(`Connection pool warmup failed: ${error.message}`);
-      }
-    } catch (error) {
-      logger.error(`Startup initialization error: ${error.message}`);
-    }
-  })();
+  // Pre-warm connection pools (HTTP/2 keep-alive)
+  try {
+    await httpClient.prewarmConnections();
+  } catch (error) {
+    logger.warn(`Connection pool warmup failed: ${error.message}`);
+  }
   
   // Pre-warm catalog cache in background (don't block startup)
   // SIMPLIFIED: With database, only need to warm "New Releases" for fresh content
@@ -961,8 +1008,8 @@ const server = app.listen(config.server.port, () => {
   // Start self-ping mechanism (Render keep-alive)
   setupSelfPing();
   
-  // Start midnight database update scheduler
-  setupMidnightUpdate();
+  // Start daily incremental update scheduler
+  setupDailyUpdate();
 });
 
 // Graceful shutdown

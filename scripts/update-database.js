@@ -48,6 +48,12 @@ const CONFIG = {
   // Parallel batch size for metadata fetching
   parallelBatchSize: 3,
   
+  // Cleanup: Check entries added in the last N days
+  cleanupDaysToCheck: 3,
+  
+  // Cleanup: Max entries to fix per run (to prevent overload)
+  cleanupMaxFixes: 50,
+  
   // Retry configuration
   maxRetries: 2,
   retryDelay: 1000,
@@ -84,6 +90,45 @@ const hentaitvScraper = require('../src/scrapers/hentaitv');
 
 // Import rating normalizer
 const ratingNormalizer = require('../src/utils/ratingNormalizer');
+
+/**
+ * Clear addon cache so new content is visible immediately
+ * This is called after database updates
+ */
+function clearAddonCache() {
+  try {
+    // Try to clear the cache module if loaded
+    const cachePath = path.join(__dirname, '..', 'src', 'cache', 'index.js');
+    if (fs.existsSync(cachePath)) {
+      // Clear require cache to force reload
+      delete require.cache[require.resolve(cachePath)];
+      
+      // Also try to clear the database loader cache
+      const dbLoaderPath = path.join(__dirname, '..', 'src', 'utils', 'databaseLoader.js');
+      if (fs.existsSync(dbLoaderPath)) {
+        delete require.cache[require.resolve(dbLoaderPath)];
+      }
+    }
+    
+    // Clear any .cache directory files
+    const cacheDir = path.join(__dirname, '..', '.cache');
+    if (fs.existsSync(cacheDir)) {
+      const files = fs.readdirSync(cacheDir);
+      for (const file of files) {
+        try {
+          fs.unlinkSync(path.join(cacheDir, file));
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+      logger.info(`   🧹 Cleared ${files.length} cache files`);
+    }
+    
+    logger.info(`   ✅ Addon cache cleared - new content will be visible on next request`);
+  } catch (error) {
+    logger.debug(`   ⚠️ Could not clear addon cache: ${error.message}`);
+  }
+}
 
 /**
  * Sleep helper
@@ -307,6 +352,485 @@ async function fetchMetadata(scraper, seriesId) {
 }
 
 /**
+ * Check if an entry has broken/incomplete data
+ * Returns true if the entry needs fixing
+ */
+function isEntryBroken(entry) {
+  // No episodes at all
+  if (!entry.episodes || !Array.isArray(entry.episodes) || entry.episodes.length === 0) {
+    return { broken: true, reason: 'no episodes' };
+  }
+  
+  // Check first episode for proper format
+  const firstEp = entry.episodes[0];
+  
+  // Episodes using old format (episodeNumber instead of number)
+  if (firstEp.episodeNumber !== undefined && firstEp.number === undefined) {
+    return { broken: true, reason: 'old episode format (episodeNumber)' };
+  }
+  
+  // Episodes missing number field entirely
+  if (firstEp.number === undefined && firstEp.episodeNumber === undefined) {
+    return { broken: true, reason: 'episodes missing number field' };
+  }
+  
+  // Episodes missing release date (important for "New Releases" sorting)
+  if (!firstEp.released) {
+    return { broken: true, reason: 'episodes missing release date' };
+  }
+  
+  // Check for episodes with suspicious/incorrect dates (future dates or all same date for newer episodes)
+  // This catches cases where dates were set to "now" during updates instead of actual dates
+  const now = new Date();
+  const latestEps = entry.episodes.slice(-2); // Last 2 episodes
+  for (const ep of latestEps) {
+    if (ep.released) {
+      const epDate = new Date(ep.released);
+      // If episode date is in the future (more than 1 day ahead), it's likely wrong
+      if (epDate > new Date(now.getTime() + 24 * 60 * 60 * 1000)) {
+        return { broken: true, reason: 'episodes have future dates' };
+      }
+    }
+  }
+  
+  // Missing critical metadata
+  if (!entry.name || entry.name.trim() === '') {
+    return { broken: true, reason: 'missing name' };
+  }
+  
+  return { broken: false };
+}
+
+/**
+ * Check if an entry needs RAW status re-check
+ * Returns true if any episodes are marked as RAW and might have subtitles now
+ */
+function needsRawRecheck(entry) {
+  if (!entry.episodes || !Array.isArray(entry.episodes)) {
+    return false;
+  }
+  
+  // Check if any episodes are marked as RAW OR if entry was recently added
+  // (recently added entries may have RAW episodes that weren't properly marked)
+  const hasRawEpisodes = entry.episodes.some(ep => ep.isRaw === true);
+  
+  // Also check entries added in the last 7 days that don't have isRaw set at all
+  // These may need to be checked for RAW status
+  const recentlyAdded = entry.addedAt && 
+    (new Date() - new Date(entry.addedAt)) < 7 * 24 * 60 * 60 * 1000;
+  const missingRawStatus = entry.episodes.some(ep => ep.isRaw === undefined);
+  
+  return hasRawEpisodes || (recentlyAdded && missingRawStatus);
+}
+
+/**
+ * Get the correct scraper for a series ID
+ */
+function getScraperForId(seriesId) {
+  if (seriesId.startsWith('hmm-') || seriesId.startsWith('hentaimama-')) {
+    return { scraper: hentaimamaScraper, name: 'hentaimama' };
+  } else if (seriesId.startsWith('hse-') || seriesId.startsWith('hentaisea-')) {
+    return { scraper: hentaiseaScraper, name: 'hentaisea' };
+  } else if (seriesId.startsWith('htv-') || seriesId.startsWith('hentaitv-')) {
+    return { scraper: hentaitvScraper, name: 'hentaitv' };
+  }
+  // Default to HentaiMama
+  return { scraper: hentaimamaScraper, name: 'hentaimama' };
+}
+
+/**
+ * Cleanup recently added entries with broken/incomplete data
+ * @param {Array} catalog - The full catalog array
+ * @returns {Object} - { fixedCount, removedCount, catalog }
+ */
+async function cleanupBrokenEntries(catalog) {
+  const now = new Date();
+  const cutoffDate = new Date(now.getTime() - CONFIG.cleanupDaysToCheck * 24 * 60 * 60 * 1000);
+  
+  logger.info(`\n🧹 Checking for broken entries added since ${cutoffDate.toISOString().split('T')[0]}...`);
+  
+  // Find recently added entries that might be broken
+  const recentEntries = catalog.filter(entry => {
+    const addedAt = entry.addedAt ? new Date(entry.addedAt) : null;
+    const lastUpdated = entry.lastUpdated ? new Date(entry.lastUpdated) : null;
+    const entryDate = addedAt || lastUpdated;
+    return entryDate && entryDate >= cutoffDate;
+  });
+  
+  logger.info(`   Found ${recentEntries.length} entries added in last ${CONFIG.cleanupDaysToCheck} days`);
+  
+  // Check which ones are broken
+  const brokenEntries = recentEntries
+    .map(entry => ({ entry, ...isEntryBroken(entry) }))
+    .filter(item => item.broken);
+  
+  if (brokenEntries.length === 0) {
+    logger.info(`   ✅ No broken entries found!`);
+    return { fixedCount: 0, removedCount: 0, catalog };
+  }
+  
+  logger.info(`   ⚠️ Found ${brokenEntries.length} broken entries:`);
+  for (const item of brokenEntries.slice(0, 10)) { // Show first 10
+    logger.info(`      • ${item.entry.name || item.entry.id} - ${item.reason}`);
+  }
+  if (brokenEntries.length > 10) {
+    logger.info(`      ... and ${brokenEntries.length - 10} more`);
+  }
+  
+  // Fix broken entries (up to max limit)
+  let fixedCount = 0;
+  let removedCount = 0;
+  const entriesToFix = brokenEntries.slice(0, CONFIG.cleanupMaxFixes);
+  
+  logger.info(`\n   📥 Attempting to fix ${entriesToFix.length} entries...`);
+  
+  for (let i = 0; i < entriesToFix.length; i++) {
+    const { entry } = entriesToFix[i];
+    const idx = catalog.findIndex(c => c.id === entry.id);
+    
+    if (idx === -1) continue;
+    
+    try {
+      const { scraper, name } = getScraperForId(entry.id);
+      const fullMeta = await fetchMetadata(scraper, entry.id);
+      
+      if (fullMeta && fullMeta.episodes && fullMeta.episodes.length > 0) {
+        // Verify the fetched metadata has proper format
+        const firstEp = fullMeta.episodes[0];
+        if (firstEp.number !== undefined || firstEp.episodeNumber !== undefined) {
+          // Normalize episode format (including isRaw status)
+          const normalizedEpisodes = fullMeta.episodes.map(ep => ({
+            id: ep.id || `${entry.id.replace(/^(hmm|hse|htv)-/, '')}-episode-${ep.number || ep.episodeNumber}`,
+            slug: ep.slug || `${entry.id.replace(/^(hmm|hse|htv)-/, '')}-episode-${ep.number || ep.episodeNumber}`,
+            number: ep.number || ep.episodeNumber,
+            title: ep.title || ep.name || `Episode ${ep.number || ep.episodeNumber}`,
+            poster: ep.poster || entry.poster,
+            released: ep.released || entry.lastUpdated || new Date().toISOString(),
+            isRaw: ep.isRaw || false, // Track RAW status per episode
+          }));
+          
+          catalog[idx] = {
+            ...catalog[idx],
+            episodes: normalizedEpisodes,
+            hasFullMeta: true,
+            // Update other fields if available
+            ...(fullMeta.description && { description: fullMeta.description }),
+            ...(fullMeta.genres && fullMeta.genres.length > 0 && { genres: fullMeta.genres }),
+            ...(fullMeta.studio && { studio: fullMeta.studio }),
+            ...(fullMeta.rating && { rating: fullMeta.rating }),
+            ...(fullMeta.year && { year: fullMeta.year }),
+            ...(fullMeta.lastUpdated && { lastUpdated: fullMeta.lastUpdated }),
+          };
+          
+          fixedCount++;
+          logger.debug(`      ✅ Fixed: ${entry.name || entry.id}`);
+        } else {
+          // Metadata fetch returned data but still bad format - remove entry
+          catalog.splice(idx, 1);
+          removedCount++;
+          logger.debug(`      🗑️ Removed (still broken after fetch): ${entry.name || entry.id}`);
+        }
+      } else {
+        // Could not fetch valid metadata - remove the broken entry
+        catalog.splice(idx, 1);
+        removedCount++;
+        logger.debug(`      🗑️ Removed (fetch failed): ${entry.name || entry.id}`);
+      }
+      
+      process.stdout.write(`\r      Progress: ${i + 1}/${entriesToFix.length} (${fixedCount} fixed, ${removedCount} removed)    `);
+      await sleep(CONFIG.delayBetweenRequests);
+      
+    } catch (error) {
+      logger.debug(`      ❌ Error fixing ${entry.id}: ${error.message}`);
+      // Remove entries that throw errors during fix
+      const currentIdx = catalog.findIndex(c => c.id === entry.id);
+      if (currentIdx !== -1) {
+        catalog.splice(currentIdx, 1);
+        removedCount++;
+      }
+    }
+  }
+  
+  console.log(''); // New line after progress
+  logger.info(`   ✅ Cleanup complete: ${fixedCount} fixed, ${removedCount} removed`);
+  
+  return { fixedCount, removedCount, catalog };
+}
+
+/**
+ * Check for RAW→SUB status changes on previously RAW episodes
+ * This function re-checks episodes that were marked as RAW to see if subtitles are now available
+ * @param {Array} catalog - The full catalog array
+ * @returns {Object} - { updatedCount, catalog }
+ */
+async function checkRawStatusChanges(catalog) {
+  const now = new Date();
+  const cutoffDate = new Date(now.getTime() - CONFIG.cleanupDaysToCheck * 24 * 60 * 60 * 1000);
+  
+  logger.info(`\n🔍 Checking for RAW→SUB status changes...`);
+  
+  // Find entries with RAW episodes added recently
+  const entriesWithRaw = catalog.filter(entry => {
+    const addedAt = entry.addedAt ? new Date(entry.addedAt) : null;
+    const lastUpdated = entry.lastUpdated ? new Date(entry.lastUpdated) : null;
+    const entryDate = addedAt || lastUpdated;
+    return entryDate && entryDate >= cutoffDate && needsRawRecheck(entry);
+  });
+  
+  if (entriesWithRaw.length === 0) {
+    logger.info(`   ✅ No RAW episodes to check`);
+    return { updatedCount: 0, catalog };
+  }
+  
+  logger.info(`   Found ${entriesWithRaw.length} series with RAW episodes to check`);
+  
+  let updatedCount = 0;
+  const maxToCheck = Math.min(entriesWithRaw.length, 20); // Limit to avoid too many requests
+  
+  for (let i = 0; i < maxToCheck; i++) {
+    const entry = entriesWithRaw[i];
+    const idx = catalog.findIndex(c => c.id === entry.id);
+    if (idx === -1) continue;
+    
+    try {
+      // Re-fetch metadata to get updated RAW status
+      const fullMeta = await fetchMetadata(hentaimamaScraper, entry.id);
+      
+      if (fullMeta && fullMeta.episodes && fullMeta.episodes.length > 0) {
+        let needsUpdate = false;
+        
+        // Debug: Log the first episode's RAW status from freshly fetched metadata
+        logger.debug(`   🔍 ${entry.name}: Fetched ${fullMeta.episodes.length} episodes, first ep isRaw=${fullMeta.episodes[0].isRaw}`);
+        
+        // Compare RAW status for each episode
+        for (const newEp of fullMeta.episodes) {
+          const oldEp = entry.episodes?.find(e => 
+            (e.number || e.episodeNumber) === (newEp.number || newEp.episodeNumber)
+          );
+          
+          // Update if RAW changed to SUB, or if isRaw field was missing before
+          if (oldEp) {
+            // Debug: Log comparison
+            logger.debug(`     Ep ${newEp.number}: old.isRaw=${oldEp.isRaw} (type: ${typeof oldEp.isRaw}), new.isRaw=${newEp.isRaw} (type: ${typeof newEp.isRaw})`);
+            
+            if (oldEp.isRaw === true && newEp.isRaw === false) {
+              needsUpdate = true;
+              logger.info(`   🎬 ${entry.name} Ep ${newEp.number}: RAW → Subtitled`);
+            } else if (oldEp.isRaw === undefined && newEp.isRaw !== undefined) {
+              // First time setting RAW status
+              needsUpdate = true;
+              logger.info(`   📝 ${entry.name} Ep ${newEp.number}: Setting RAW=${newEp.isRaw}`);
+            }
+          } else {
+            // New episode discovered during RAW check
+            needsUpdate = true;
+            logger.debug(`   📝 ${entry.name} Ep ${newEp.number}: New episode with RAW=${newEp.isRaw}`);
+          }
+        }
+        
+        if (needsUpdate) {
+          // Update the episodes with new RAW status
+          catalog[idx].episodes = fullMeta.episodes.map(ep => ({
+            id: ep.id || catalog[idx].episodes?.find(e => e.number === ep.number)?.id,
+            slug: ep.slug || catalog[idx].episodes?.find(e => e.number === ep.number)?.slug,
+            number: ep.number || ep.episodeNumber,
+            title: ep.title || ep.name || `Episode ${ep.number}`,
+            poster: ep.poster || entry.poster,
+            released: ep.released || entry.lastUpdated,
+            isRaw: ep.isRaw || false,
+          }));
+          updatedCount++;
+        }
+      }
+      
+      process.stdout.write(`\r   Progress: ${i + 1}/${maxToCheck} (${updatedCount} updated)    `);
+      await sleep(CONFIG.delayBetweenRequests);
+      
+    } catch (error) {
+      logger.debug(`   ❌ Error checking ${entry.name}: ${error.message}`);
+    }
+  }
+  
+  if (maxToCheck > 0) console.log('');
+  
+  if (updatedCount > 0) {
+    logger.info(`   ✅ Updated RAW status for ${updatedCount} series`);
+  } else {
+    logger.info(`   ✅ No RAW→SUB changes detected`);
+  }
+  
+  return { updatedCount, catalog };
+}
+
+/**
+ * Re-rate entries that have N/A ratings
+ * When a hentai first comes out, there may be no ratings yet.
+ * This function checks recently added entries and fetches updated ratings.
+ * @param {Array} catalog - The full catalog array
+ * @returns {Object} - { updatedCount, catalog }
+ */
+async function checkMissingRatings(catalog) {
+  const now = new Date();
+  // Check entries added in the last 14 days (ratings take time to accumulate)
+  const cutoffDate = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  
+  logger.info(`\n⭐ Checking for missing ratings on recent entries...`);
+  
+  // Find entries added recently that have no rating
+  const entriesWithoutRating = catalog.filter(entry => {
+    const addedAt = entry.addedAt ? new Date(entry.addedAt) : null;
+    const lastUpdated = entry.lastUpdated ? new Date(entry.lastUpdated) : null;
+    const entryDate = addedAt || lastUpdated;
+    
+    // Check if entry was added recently and has no rating
+    const isRecent = entryDate && entryDate >= cutoffDate;
+    const hasNoRating = entry.rating === undefined || entry.rating === null || 
+                       isNaN(entry.rating) || entry.rating === 0;
+    
+    return isRecent && hasNoRating;
+  });
+  
+  if (entriesWithoutRating.length === 0) {
+    logger.info(`   ✅ All recent entries have ratings`);
+    return { updatedCount: 0, catalog };
+  }
+  
+  logger.info(`   Found ${entriesWithoutRating.length} recent series without ratings`);
+  
+  let updatedCount = 0;
+  const maxToCheck = Math.min(entriesWithoutRating.length, 15); // Limit to avoid too many requests
+  
+  for (let i = 0; i < maxToCheck; i++) {
+    const entry = entriesWithoutRating[i];
+    const idx = catalog.findIndex(c => c.id === entry.id);
+    if (idx === -1) continue;
+    
+    try {
+      // Re-fetch metadata to get updated rating
+      const { scraper } = getScraperForId(entry.id);
+      const fullMeta = await fetchMetadata(scraper, entry.id);
+      
+      if (fullMeta && fullMeta.rating !== undefined && fullMeta.rating !== null && !isNaN(fullMeta.rating)) {
+        catalog[idx].rating = fullMeta.rating;
+        if (fullMeta.ratingBreakdown) {
+          catalog[idx].ratingBreakdown = fullMeta.ratingBreakdown;
+        }
+        if (fullMeta.voteCount) {
+          catalog[idx].voteCount = fullMeta.voteCount;
+        }
+        updatedCount++;
+        logger.debug(`   ⭐ ${entry.name}: N/A → ${fullMeta.rating.toFixed(1)}`);
+      }
+      
+      process.stdout.write(`\r   Progress: ${i + 1}/${maxToCheck} (${updatedCount} updated)    `);
+      await sleep(CONFIG.delayBetweenRequests);
+      
+    } catch (error) {
+      logger.debug(`   ❌ Error checking rating for ${entry.name}: ${error.message}`);
+    }
+  }
+  
+  if (maxToCheck > 0) console.log('');
+  
+  if (updatedCount > 0) {
+    logger.info(`   ✅ Updated ratings for ${updatedCount} series`);
+  } else {
+    logger.info(`   ✅ No rating updates available`);
+  }
+  
+  return { updatedCount, catalog };
+}
+
+/**
+ * Check for entries with future episode dates and fix them
+ * This catches cases where date extraction failed during updates
+ */
+async function checkFutureDates(catalog) {
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  
+  logger.info(`\n📅 Checking for entries with future episode dates...`);
+  
+  // Find entries with episodes that have future dates
+  const entriesWithFutureDates = catalog.filter(entry => {
+    if (!entry.episodes || !Array.isArray(entry.episodes)) return false;
+    
+    return entry.episodes.some(ep => {
+      if (!ep.released) return false;
+      const epDate = new Date(ep.released);
+      return epDate > tomorrow;
+    });
+  });
+  
+  if (entriesWithFutureDates.length === 0) {
+    logger.info(`   ✅ No entries with future dates`);
+    return { fixedCount: 0, catalog };
+  }
+  
+  logger.info(`   ⚠️ Found ${entriesWithFutureDates.length} entries with future episode dates:`);
+  for (const entry of entriesWithFutureDates.slice(0, 10)) {
+    const futureEps = entry.episodes.filter(ep => ep.released && new Date(ep.released) > tomorrow);
+    logger.info(`      • ${entry.name} - ${futureEps.length} episodes with future dates`);
+  }
+  
+  let fixedCount = 0;
+  const maxToFix = Math.min(entriesWithFutureDates.length, CONFIG.cleanupMaxFixes);
+  
+  for (let i = 0; i < maxToFix; i++) {
+    const entry = entriesWithFutureDates[i];
+    const idx = catalog.findIndex(c => c.id === entry.id);
+    if (idx === -1) continue;
+    
+    try {
+      const { scraper } = getScraperForId(entry.id);
+      const fullMeta = await fetchMetadata(scraper, entry.id);
+      
+      if (fullMeta && fullMeta.episodes && fullMeta.episodes.length > 0) {
+        // Verify new dates are valid (not in future)
+        const hasValidDates = fullMeta.episodes.every(ep => {
+          if (!ep.released) return true;
+          return new Date(ep.released) <= tomorrow;
+        });
+        
+        if (hasValidDates) {
+          // Normalize and update episodes
+          const normalizedEpisodes = fullMeta.episodes.map(ep => ({
+            id: ep.id || `${entry.id.replace(/^(hmm|hse|htv)-/, '')}-episode-${ep.number || ep.episodeNumber}`,
+            slug: ep.slug || `${entry.id.replace(/^(hmm|hse|htv)-/, '')}-episode-${ep.number || ep.episodeNumber}`,
+            number: ep.number || ep.episodeNumber,
+            title: ep.title || ep.name || `Episode ${ep.number || ep.episodeNumber}`,
+            poster: ep.poster || entry.poster,
+            released: ep.released || entry.lastUpdated || new Date().toISOString(),
+            isRaw: ep.isRaw || false,
+          }));
+          
+          catalog[idx].episodes = normalizedEpisodes;
+          catalog[idx].lastUpdated = new Date().toISOString();
+          fixedCount++;
+          logger.debug(`   ✅ Fixed dates for ${entry.name}`);
+        }
+      }
+      
+      process.stdout.write(`\r   Progress: ${i + 1}/${maxToFix} (${fixedCount} fixed)    `);
+      await sleep(CONFIG.delayBetweenRequests);
+      
+    } catch (error) {
+      logger.debug(`   ❌ Error fixing dates for ${entry.name}: ${error.message}`);
+    }
+  }
+  
+  if (maxToFix > 0) console.log('');
+  
+  if (fixedCount > 0) {
+    logger.info(`   ✅ Fixed dates for ${fixedCount} entries`);
+  } else {
+    logger.info(`   ✅ No date fixes applied`);
+  }
+  
+  return { fixedCount, catalog };
+}
+
+/**
  * Scan a provider for new content
  * Returns array of new/updated series
  * 
@@ -373,7 +897,19 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
         }
         
         // Check each series - new or has new episodes?
+        // IMPORTANT: Only add series with recent episode dates to avoid false positives
+        const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+        
         for (const [slug, seriesInfo] of seriesMap) {
+          // Validate that the episode release date is recent (within 2 weeks)
+          // This prevents adding old content that happens to be on the monthly page
+          const episodeDate = seriesInfo.releaseDate ? new Date(seriesInfo.releaseDate) : null;
+          if (!episodeDate || episodeDate < twoWeeksAgo) {
+            const dateStr = episodeDate ? episodeDate.toISOString().split('T')[0] : 'unknown';
+            logger.debug(`  ⏭️ Skipping "${seriesInfo.name}" - episode date too old: ${dateStr}`);
+            continue;
+          }
+          
           const existing = findExistingEntry({ name: seriesInfo.name }, existingCatalog, normalizedIndex);
           
           if (existing) {
@@ -385,19 +921,21 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
                 existing,
                 newEpisodeCount: seriesInfo.latestEpisode,
                 lastUpdated: seriesInfo.releaseDate,
+                isRaw: seriesInfo.isRaw, // Track RAW status
               });
             } else {
               logger.debug(`  ↩️ Up to date: "${seriesInfo.name}" (${existingEpisodeCount} episodes)`);
             }
           } else {
-            // New series
+            // New series - only add if episode date is recent
             newItems.push({
               id: seriesInfo.id,
               name: seriesInfo.name,
               poster: seriesInfo.poster,
               lastUpdated: seriesInfo.releaseDate,
+              isRaw: seriesInfo.isRaw, // Track RAW status
             });
-            logger.debug(`  ✨ New: "${seriesInfo.name}"`);
+            logger.debug(`  ✨ New: "${seriesInfo.name}" (${episodeDate.toISOString().split('T')[0]})`);
           }
         }
         
@@ -714,24 +1252,62 @@ async function runIncrementalUpdate() {
       // Start with existing catalog
       const updatedCatalog = [...existingCatalog];
       
-      // Update existing series with new episodes
-      for (const update of allUpdatedItems) {
-        const idx = updatedCatalog.findIndex(s => s.id === update.existing.id);
-        if (idx !== -1) {
-          // Generate episode entries for the new count
-          const episodes = [];
-          for (let i = 1; i <= update.newEpisodeCount; i++) {
-            const slug = updatedCatalog[idx].providerSlugs?.hmm || updatedCatalog[idx].id?.replace('hmm-', '');
-            episodes.push({
-              id: `${slug}-episode-${i}`,
-              name: `Episode ${i}`,
-              episodeNumber: i,
-            });
+      // Update existing series with new episodes - FETCH FULL METADATA
+      // We need to get the actual episode data with dates, not just placeholders
+      if (allUpdatedItems.length > 0) {
+        logger.info(`\n📥 Fetching full metadata for ${allUpdatedItems.length} updated series...`);
+        
+        for (let i = 0; i < allUpdatedItems.length; i++) {
+          const update = allUpdatedItems[i];
+          const idx = updatedCatalog.findIndex(s => s.id === update.existing.id);
+          
+          if (idx !== -1) {
+            try {
+              // Fetch full metadata including episodes with dates
+              const fullMeta = await fetchMetadata(hentaimamaScraper, update.existing.id);
+              
+              if (fullMeta && fullMeta.episodes && fullMeta.episodes.length > 0) {
+                // Update with full episode data
+                updatedCatalog[idx].episodes = fullMeta.episodes;
+                updatedCatalog[idx].lastUpdated = fullMeta.lastUpdated || update.lastUpdated || new Date().toISOString();
+                
+                // Also update other fields that might have changed
+                if (fullMeta.genres && fullMeta.genres.length > 0) {
+                  updatedCatalog[idx].genres = fullMeta.genres;
+                }
+                if (fullMeta.description) {
+                  updatedCatalog[idx].description = fullMeta.description;
+                }
+                if (fullMeta.rating) {
+                  updatedCatalog[idx].rating = fullMeta.rating;
+                }
+                
+                logger.debug(`  ✅ Updated ${update.existing.name} with ${fullMeta.episodes.length} episodes`);
+              } else {
+                // Fallback to simple episode generation if metadata fetch fails
+                const episodes = [];
+                for (let j = 1; j <= update.newEpisodeCount; j++) {
+                  const slug = updatedCatalog[idx].providerSlugs?.hmm || updatedCatalog[idx].id?.replace('hmm-', '');
+                  episodes.push({
+                    id: `${slug}-episode-${j}`,
+                    name: `Episode ${j}`,
+                    number: j,
+                  });
+                }
+                updatedCatalog[idx].episodes = episodes;
+                updatedCatalog[idx].lastUpdated = update.lastUpdated || new Date().toISOString();
+                logger.debug(`  ⚠️ Fallback episodes for ${update.existing.name}`);
+              }
+              
+              process.stdout.write(`\r    Progress: ${i + 1}/${allUpdatedItems.length}    `);
+              await sleep(CONFIG.delayBetweenRequests);
+              
+            } catch (error) {
+              logger.error(`  ❌ Failed to update ${update.existing.name}: ${error.message}`);
+            }
           }
-          updatedCatalog[idx].episodes = episodes;
-          updatedCatalog[idx].lastUpdated = update.lastUpdated || new Date().toISOString();
-          logger.debug(`Updated episodes for ${updatedCatalog[idx].name}`);
         }
+        console.log('');
       }
       
       // Add new items to catalog
@@ -759,21 +1335,81 @@ async function runIncrementalUpdate() {
         updatedCatalog.unshift(enrichedItem); // Add to beginning (newest first)
       }
       
-      // Update database
-      database.catalog = updatedCatalog;
+      // Run cleanup on recently added entries
+      const cleanupResult = await cleanupBrokenEntries(updatedCatalog);
+      
+      // Check for RAW→SUB status changes on previously RAW episodes
+      const rawResult = await checkRawStatusChanges(cleanupResult.catalog);
+      
+      // Check for missing ratings on recently added entries
+      const ratingResult = await checkMissingRatings(rawResult.catalog);
+      
+      // Check for entries with future episode dates
+      const dateResult = await checkFutureDates(ratingResult.catalog);
+      
+      // Use the cleaned catalog
+      database.catalog = dateResult.catalog;
       database.lastUpdated = new Date().toISOString();
       database.incrementalUpdate = true;
       
       // Save
       saveDatabase(database);
-      updateFilterOptions(updatedCatalog);
+      updateFilterOptions(ratingResult.catalog);
       
-      logger.info(`\n✅ Database updated: ${existingCatalog.length} → ${updatedCatalog.length} series`);
+      logger.info(`\n✅ Database updated: ${existingCatalog.length} → ${ratingResult.catalog.length} series`);
+      
+      // Clear addon cache so new content is visible immediately
+      clearAddonCache();
+      
       if (allUpdatedItems.length > 0) {
         logger.info(`   ${allUpdatedItems.length} series updated with new episodes`);
       }
+      if (cleanupResult.fixedCount > 0 || cleanupResult.removedCount > 0) {
+        logger.info(`   Cleanup: ${cleanupResult.fixedCount} fixed, ${cleanupResult.removedCount} removed`);
+      }
     } else {
       logger.info('\n🔍 DRY RUN - Changes not saved');
+    }
+  }
+  
+  // Always run cleanup even if no new content was found
+  if (!hasChanges && !DRY_RUN) {
+    // Load catalog for cleanup-only run
+    const catalogForCleanup = [...existingCatalog];
+    const cleanupResult = await cleanupBrokenEntries(catalogForCleanup);
+    
+    // Also check for RAW→SUB status changes
+    const rawResult = await checkRawStatusChanges(cleanupResult.catalog);
+    
+    // Also check for missing ratings
+    const ratingResult = await checkMissingRatings(rawResult.catalog);
+    
+    // Also check for future episode dates
+    const dateResult = await checkFutureDates(ratingResult.catalog);
+    
+    if (cleanupResult.fixedCount > 0 || cleanupResult.removedCount > 0 || 
+        rawResult.updatedCount > 0 || ratingResult.updatedCount > 0 ||
+        dateResult.fixedCount > 0) {
+      database.catalog = dateResult.catalog;
+      database.lastUpdated = new Date().toISOString();
+      database.incrementalUpdate = true;
+      
+      saveDatabase(database);
+      updateFilterOptions(dateResult.catalog);
+      
+      logger.info(`\n✅ Cleanup complete: ${existingCatalog.length} → ${dateResult.catalog.length} series`);
+      if (rawResult.updatedCount > 0) {
+        logger.info(`   RAW→SUB updates: ${rawResult.updatedCount}`);
+      }
+      if (ratingResult.updatedCount > 0) {
+        logger.info(`   Rating updates: ${ratingResult.updatedCount}`);
+      }
+      if (dateResult.fixedCount > 0) {
+        logger.info(`   Date fixes: ${dateResult.fixedCount}`);
+      }
+      
+      // Clear addon cache
+      clearAddonCache();
     }
   }
   

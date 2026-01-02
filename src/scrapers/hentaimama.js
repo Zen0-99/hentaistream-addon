@@ -989,12 +989,26 @@ class HentaiMamaScraper {
         
         const episodeSlug = episodeMatch[1];
         
-        // Extract series slug by removing episode number suffix
-        const seriesSlug = episodeSlug.replace(/-episode-\d+$/, '');
+        // Extract series slug by removing episode number suffix (handles multiple patterns)
+        // Patterns: -episode-2, -episode-02, -ep-2, -2
+        const seriesSlug = episodeSlug.replace(/-(?:episode|ep)?-?\d+$/, '');
         
-        // Extract episode number
-        const epNumMatch = episodeSlug.match(/-episode-(\d+)$/);
-        const episodeNumber = epNumMatch ? parseInt(epNumMatch[1]) : 1;
+        // Extract episode number from various patterns
+        let episodeNumber = 1;
+        const epPatterns = [
+          /-episode-(\d+)$/,      // -episode-2
+          /-ep-(\d+)$/,           // -ep-2  
+          /-(\d+)$/,              // -2 (must be at end)
+          /episode[- ]?(\d+)/i,   // episode2, episode 2
+        ];
+        
+        for (const pattern of epPatterns) {
+          const match = episodeSlug.match(pattern);
+          if (match) {
+            episodeNumber = parseInt(match[1]);
+            break;
+          }
+        }
         
         // Extract title - series name
         let title = link.text().trim() ||
@@ -1267,6 +1281,8 @@ class HentaiMamaScraper {
       let releaseInfo = '';
       let seriesTitle = '';
       let studio = null;
+      let rating = null;
+      let voteCount = null;
       
       // Try to fetch year, title, studio AND DESCRIPTION from series page if we have the link
       if (seriesPageLink) {
@@ -1351,6 +1367,27 @@ class HentaiMamaScraper {
           if (studio) {
             logger.info(`Found studio from series page: ${studio}`);
           }
+          
+          // Extract rating from series page (DooPlay theme)
+          // Selector: .dt_rating_vgs contains the rating value (e.g., "7.1")
+          const ratingText = $seriesPage('.dt_rating_vgs').first().text().trim();
+          if (ratingText) {
+            const ratingValue = parseFloat(ratingText);
+            if (!isNaN(ratingValue) && ratingValue >= 0 && ratingValue <= 10) {
+              rating = ratingValue;
+              logger.info(`Found rating from series page: ${rating}`);
+            }
+          }
+          
+          // Extract vote count if available
+          const voteText = $seriesPage('.rating-count').first().text().trim();
+          if (voteText) {
+            const voteMatch = voteText.match(/(\d+)/);
+            if (voteMatch) {
+              voteCount = parseInt(voteMatch[1], 10);
+              logger.info(`Found vote count from series page: ${voteCount}`);
+            }
+          }
         } catch (err) {
           logger.debug(`Could not fetch series page for year: ${err.message}`);
         }
@@ -1407,42 +1444,89 @@ class HentaiMamaScraper {
         
         const $seriesPage = cheerio.load(seriesPageResponse.data);
         
-        // Look for episode cards (article tags) on the series page
-        $seriesPage('article').each((i, epElem) => {
-          const $ep = $seriesPage(epElem);
-          const epLink = $ep.find('a[href*="episodes"]').attr('href');
-          const epTitle = $ep.find('.episodiotitle, .episode-title, a').first().text().trim();
-          const epImg = $ep.find('img').first().attr('data-src') || $ep.find('img').first().attr('src');
+        // Look for episode cards - try multiple selectors
+        // HentaiMama uses different layouts: article tags, episodios divs, or numbered links
+        const episodeSelectors = [
+          'article', 
+          '.episodios li', 
+          '.se-a li',
+          '#episodes li',
+          '.episodes-list li'
+        ];
+        
+        let foundEpisodes = false;
+        for (const selector of episodeSelectors) {
+          if (foundEpisodes) break;
           
-          if (epLink) {
-            const epSlugMatch = epLink.match(/episodes\/([\w-]+)/);
-            const epNumMatch = epLink.match(/episode-(\d+)/);
+          $seriesPage(selector).each((i, epElem) => {
+            const $ep = $seriesPage(epElem);
+            const epLink = $ep.find('a[href*="episodes"]').attr('href') || 
+                          $ep.find('a').attr('href');
+            const epTitle = $ep.find('.episodiotitle, .episode-title, .title, a').first().text().trim();
+            const epImg = $ep.find('img').first().attr('data-src') || $ep.find('img').first().attr('src');
             
-            if (epSlugMatch && epNumMatch) {
-              const epNum = parseInt(epNumMatch[1]);
-              const epSlug = epSlugMatch[1];
+            if (epLink && epLink.includes('/episodes/')) {
+              const epSlugMatch = epLink.match(/episodes\/([\w-]+)/);
+              // Try multiple patterns for episode number
+              let epNum = null;
+              const epNumMatch = epLink.match(/episode-(\d+)/);
+              if (epNumMatch) {
+                epNum = parseInt(epNumMatch[1]);
+              } else {
+                // Try extracting number from title or element text
+                const numFromTitle = epTitle.match(/Episode\s*(\d+)/i) || 
+                                     epTitle.match(/Ep\.?\s*(\d+)/i) ||
+                                     $ep.find('.numerando, .num').text().match(/(\d+)/);
+                if (numFromTitle) {
+                  epNum = parseInt(numFromTitle[1]);
+                } else {
+                  // Use index + 1 as fallback
+                  epNum = i + 1;
+                }
+              }
               
-              if (!episodesMap.has(epNum)) {
-                // Extract and clean episode thumbnail
-                let episodePoster = epImg;
-                if (episodePoster && !episodePoster.startsWith('http')) {
-                  episodePoster = episodePoster.startsWith('//') ? `https:${episodePoster}` : `${this.baseUrl}${episodePoster}`;
-                }
-                if (episodePoster && episodePoster.includes('data:image')) {
-                  episodePoster = '';
-                }
+              if (epSlugMatch && epNum) {
+                const epSlug = epSlugMatch[1];
                 
-                episodesMap.set(epNum, {
-                  number: epNum,
-                  slug: epSlug,
-                  id: `hmm-${epSlug}`,
-                  title: epTitle || `Episode ${epNum}`,
-                  poster: episodePoster || undefined
-                });
+                if (!episodesMap.has(epNum)) {
+                  foundEpisodes = true;
+                  // Extract and clean episode thumbnail
+                  let episodePoster = epImg;
+                  if (episodePoster && !episodePoster.startsWith('http')) {
+                    episodePoster = episodePoster.startsWith('//') ? `https:${episodePoster}` : `${this.baseUrl}${episodePoster}`;
+                  }
+                  if (episodePoster && episodePoster.includes('data:image')) {
+                    episodePoster = '';
+                  }
+                  
+                  // ===== RAW STATUS FROM SERIES PAGE =====
+                  // The series page has RAW status indicators on episode cards
+                  // <span class="status-raw">RAW</span> or <span class="status-sub">SUB</span>
+                  const hasStatusRaw = $ep.find('.status-raw').length > 0;
+                  const hasRawText = $ep.text().includes('RAW') && !$ep.find('.status-sub').length;
+                  const epIsRaw = hasStatusRaw || hasRawText;
+                  
+                  // NOTE: Do NOT extract dates from series page - they are often WRONG
+                  // Dates must be fetched from individual episode pages
+                  
+                  episodesMap.set(epNum, {
+                    number: epNum,
+                    slug: epSlug,
+                    id: `hmm-${epSlug}`,
+                    title: epTitle || `Episode ${epNum}`,
+                    poster: episodePoster || undefined,
+                    isRaw: epIsRaw, // RAW status from series page (reliable)
+                    // released: NOT SET HERE - will be fetched from episode pages
+                  });
+                  
+                  if (epIsRaw) {
+                    logger.debug(`[HentaiMama] Episode ${epNum} is RAW (from series page)`);
+                  }
+                }
               }
             }
-          }
-        });
+          });
+        }
         
         logger.info(`Found ${episodesMap.size} episodes on series page`);
       } catch (err) {
@@ -1466,14 +1550,30 @@ class HentaiMamaScraper {
       
       logger.info(`Found ${episodes.length} episodes for ${seriesSlug}`);
       
-      // ===== FETCH EPISODE DATES =====
-      // The series page has WRONG dates (today's date), but episode pages have correct dates
-      // Fetch first 5 episode pages to get their actual release dates
+      // ===== FETCH EPISODE DATES FROM INDIVIDUAL EPISODE PAGES =====
+      // Series page dates are UNRELIABLE - must fetch from episode pages
+      // RAW status is already captured from series page above
       let seriesLastUpdated = null;
-      const episodesToFetchDates = episodes.slice(0, 5); // Limit to avoid too many requests
+      
+      // Prioritize fetching dates for episodes without dates
+      // - Fetch first 3 episodes (for series start date)
+      // - Fetch last 2 episodes (for latest episodes/new releases)
+      // This ensures we always get dates for both old and new episodes
+      const episodesWithoutDates = episodes.filter(ep => !ep.released);
+      const firstEpisodes = episodes.slice(0, 3).filter(ep => !ep.released);
+      const lastEpisodes = episodes.slice(-2).filter(ep => !ep.released);
+      
+      // Combine, dedupe by episode number, limit to 7 total
+      const episodesToFetch = new Map();
+      [...firstEpisodes, ...lastEpisodes].forEach(ep => {
+        if (!episodesToFetch.has(ep.number)) {
+          episodesToFetch.set(ep.number, ep);
+        }
+      });
+      const episodesToFetchDates = Array.from(episodesToFetch.values()).slice(0, 7);
       
       if (episodesToFetchDates.length > 0) {
-        logger.info(`[HentaiMama] Fetching dates for ${episodesToFetchDates.length} episodes...`);
+        logger.info(`[HentaiMama] Fetching dates for ${episodesToFetchDates.length} episodes from episode pages...`);
         
         for (const ep of episodesToFetchDates) {
           try {
@@ -1498,15 +1598,15 @@ class HentaiMamaScraper {
               }
             }
             
+            // NOTE: RAW status is NOT reliably available on episode pages
+            // It's already captured from the series page above
+            
             // Small delay to avoid rate limiting
             await new Promise(resolve => setTimeout(resolve, 100));
           } catch (err) {
             logger.debug(`[HentaiMama] Could not fetch date for episode ${ep.number}: ${err.message}`);
           }
         }
-        
-        // For episodes beyond the first 5, we don't have dates
-        // They will show without a date in Stremio
         
         if (seriesLastUpdated) {
           logger.info(`[HentaiMama] Series lastUpdated from episodes: ${seriesLastUpdated.toISOString()}`);
@@ -1553,6 +1653,9 @@ class HentaiMamaScraper {
         description,
         genres: filteredGenres.length > 0 ? filteredGenres : ['Hentai'],
         studio: studio,
+        rating: rating, // Rating from series page (1-10 scale)
+        voteCount: voteCount, // Number of votes
+        ratingBreakdown: rating ? { hmm: { raw: rating, type: 'direct', voteCount: voteCount || 0 } } : undefined,
         type: 'series',
         releaseInfo: finalReleaseInfo,
         lastUpdated: seriesLastUpdated ? seriesLastUpdated.toISOString() : undefined,
@@ -1586,9 +1689,32 @@ class HentaiMamaScraper {
       const $ = cheerio.load(pageResponse.data);
 
       // Step 2: Check if this episode is RAW (no subtitles)
-      // RAW status is indicated by <span class="status-raw"> containing "RAW"
-      const isRaw = $('.status-raw').length > 0 || 
-                    $('span:contains("RAW")').filter((i, el) => $(el).text().trim() === 'RAW').length > 0;
+      // RAW status is NOT on episode page - must check series page
+      // Extract series slug from episode slug (e.g., kegareboshi-ova-episode-1 -> kegareboshi-ova)
+      const seriesSlug = cleanId.replace(/-episode-\d+$/, '');
+      let isRaw = false;
+      
+      try {
+        // Fetch series page to check RAW status for this specific episode
+        const seriesPageUrl = `${this.baseUrl}/tvshows/${seriesSlug}/`;
+        const seriesPageResponse = await this.makeRequest(seriesPageUrl, { timeout: 5000 });
+        const $series = cheerio.load(seriesPageResponse.data);
+        
+        // Find the episode card that links to this episode and check its RAW status
+        $series('article').each((i, epElem) => {
+          const $ep = $series(epElem);
+          const epLink = $ep.find('a[href*="episodes"]').attr('href') || '';
+          
+          if (epLink.includes(`/episodes/${cleanId}`)) {
+            // Found this episode's card - check for RAW status
+            const hasStatusRaw = $ep.find('.status-raw').length > 0;
+            const hasRawText = $ep.text().includes('RAW') && !$ep.find('.status-sub').length;
+            isRaw = hasStatusRaw || hasRawText;
+          }
+        });
+      } catch (err) {
+        logger.debug(`[HentaiMama] Could not fetch series page for RAW check: ${err.message}`);
+      }
       
       if (isRaw) {
         logger.info(`[HentaiMama] Episode ${cleanId} is RAW (no subtitles)`);

@@ -774,6 +774,7 @@ async function enrichWithFullMetadata(items, scraper, providerName) {
               title: ep.title || `Episode ${ep.number}`,
               poster: ep.poster || undefined,
               released: ep.released || undefined,
+              isRaw: ep.isRaw || false, // Track RAW status per episode
             })),
             description: fullMeta.description || item.description,
             genres: fullMeta.genres || item.genres,
