@@ -1,821 +1,464 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HentaiStream - Configure</title>
-  <link rel="icon" type="image/png" href="/logo.png">
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-      color: #ffffff;
-      min-height: 100vh;
-      padding: 20px;
-    }
-
-    .container {
-      max-width: 700px;
-      margin: 0 auto;
-    }
-
-    .header {
-      text-align: center;
-      margin-bottom: 30px;
-    }
-
-    .logo {
-      width: 80px;
-      height: 80px;
-      margin-bottom: 15px;
-      border-radius: 16px;
-    }
-
-    .header h1 {
-      font-size: 28px;
-      margin-bottom: 8px;
-      background: linear-gradient(90deg, #e94560, #ff6b9d);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .header p {
-      color: #8892b0;
-      font-size: 14px;
-    }
-
-    .warning-badge {
-      display: inline-block;
-      background: #e94560;
-      color: white;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: bold;
-      margin-top: 10px;
-    }
-
-    .card {
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 16px;
-      padding: 24px;
-      margin-bottom: 20px;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      overflow: visible;
-      position: relative;
-      z-index: 1;
-    }
-
-    .card:has(.multi-select-dropdown.open) {
-      z-index: 100;
-    }
-
-    .card h2 {
-      font-size: 18px;
-      margin-bottom: 16px;
-      color: #e94560;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .card h2::before {
-      content: '';
-      width: 4px;
-      height: 20px;
-      background: #e94560;
-      border-radius: 2px;
-    }
-
-    .form-group {
-      margin-bottom: 20px;
-    }
-
-    .form-group label {
-      display: block;
-      margin-bottom: 8px;
-      font-weight: 500;
-      color: #ccd6f6;
-    }
-
-    .form-group .hint {
-      font-size: 12px;
-      color: #8892b0;
-      margin-top: 4px;
-    }
-
-    .checkbox-group {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-
-    .checkbox-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(255, 255, 255, 0.05);
-      padding: 12px 16px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.2s;
-      border: 1px solid transparent;
-    }
-
-    .checkbox-item:hover {
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .checkbox-item.checked {
-      border-color: #e94560;
-      background: rgba(233, 69, 96, 0.1);
-    }
-
-    .checkbox-item input {
-      display: none;
-    }
-
-    .checkbox-item .checkmark {
-      width: 20px;
-      height: 20px;
-      border: 2px solid #8892b0;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-    }
-
-    .checkbox-item.checked .checkmark {
-      background: #e94560;
-      border-color: #e94560;
-    }
-
-    .checkbox-item.checked .checkmark::after {
-      content: '✓';
-      color: white;
-      font-size: 12px;
-    }
-
-    .multi-select {
-      position: relative;
-      z-index: 10;
-    }
-
-    .multi-select:has(.open) {
-      z-index: 9999;
-    }
-
-    .multi-select-trigger {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      padding: 12px 16px;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      transition: all 0.2s;
-    }
-
-    .multi-select-trigger:hover {
-      border-color: #e94560;
-    }
-
-    .multi-select-trigger .placeholder {
-      color: #8892b0;
-    }
-
-    .multi-select-trigger .selected-count {
-      background: #e94560;
-      color: white;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 12px;
-    }
-
-    .multi-select-dropdown {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      background: #1a1a2e;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      margin-top: 4px;
-      max-height: 300px;
-      overflow-y: auto;
-      z-index: 9999;
-      display: none;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
-    }
-
-    .multi-select-dropdown.open {
-      display: block;
-    }
-
-    .multi-select-search {
-      padding: 12px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .multi-select-search input {
-      width: 100%;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 6px;
-      padding: 8px 12px;
-      color: white;
-      font-size: 14px;
-    }
-
-    .multi-select-search input::placeholder {
-      color: #8892b0;
-    }
-
-    .multi-select-options {
-      padding: 8px;
-    }
-
-    .multi-select-option {
-      padding: 8px 12px;
-      cursor: pointer;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: all 0.2s;
-    }
-
-    .multi-select-option:hover {
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .multi-select-option.selected {
-      background: rgba(233, 69, 96, 0.2);
-    }
-
-    .multi-select-option .option-check {
-      width: 16px;
-      height: 16px;
-      border: 2px solid #8892b0;
-      border-radius: 3px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 10px;
-    }
-
-    .multi-select-option.selected .option-check {
-      background: #e94560;
-      border-color: #e94560;
-      color: white;
-    }
-
-    .toggle-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: rgba(255, 255, 255, 0.05);
-      padding: 16px;
-      border-radius: 8px;
-    }
-
-    .toggle-item .toggle-info h3 {
-      font-size: 16px;
-      margin-bottom: 4px;
-    }
-
-    .toggle-item .toggle-info p {
-      font-size: 12px;
-      color: #8892b0;
-    }
-
-    .toggle-switch {
-      width: 50px;
-      height: 28px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 14px;
-      position: relative;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-
-    .toggle-switch.active {
-      background: #e94560;
-    }
-
-    .toggle-switch::after {
-      content: '';
-      position: absolute;
-      width: 22px;
-      height: 22px;
-      background: white;
-      border-radius: 50%;
-      top: 3px;
-      left: 3px;
-      transition: all 0.3s;
-    }
-
-    .toggle-switch.active::after {
-      left: 25px;
-    }
-
-    .install-section {
-      text-align: center;
-    }
-
-    .install-buttons {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-top: 20px;
-    }
-
-    .install-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      padding: 16px 24px;
-      border-radius: 12px;
-      font-size: 16px;
-      font-weight: 600;
-      text-decoration: none;
-      transition: all 0.3s;
-      cursor: pointer;
-      border: none;
-    }
-
-    .install-btn.primary {
-      background: linear-gradient(135deg, #e94560, #ff6b9d);
-      color: white;
-    }
-
-    .install-btn.primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 30px rgba(233, 69, 96, 0.3);
-    }
-
-    .install-btn.secondary {
-      background: rgba(255, 255, 255, 0.1);
-      color: white;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-
-    .install-btn.secondary:hover {
-      background: rgba(255, 255, 255, 0.15);
-    }
-
-    .install-btn svg {
-      width: 20px;
-      height: 20px;
-    }
-
-    .url-display {
-      margin-top: 20px;
-      background: rgba(0, 0, 0, 0.3);
-      border-radius: 8px;
-      padding: 12px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .url-display input {
-      flex: 1;
-      background: none;
-      border: none;
-      color: #8892b0;
-      font-family: monospace;
-      font-size: 12px;
-      outline: none;
-    }
-
-    .url-display button {
-      background: rgba(255, 255, 255, 0.1);
-      border: none;
-      color: white;
-      padding: 8px 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.2s;
-    }
-
-    .url-display button:hover {
-      background: rgba(255, 255, 255, 0.2);
-    }
-
-    .copy-success {
-      color: #4ade80;
-      font-size: 12px;
-      margin-top: 8px;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    .copy-success.show {
-      opacity: 1;
-    }
-
-    .footer {
-      text-align: center;
-      margin-top: 30px;
-      color: #8892b0;
-      font-size: 12px;
-    }
-
-    .footer a {
-      color: #e94560;
-      text-decoration: none;
-    }
-
-    @media (max-width: 600px) {
-      .checkbox-group {
-        flex-direction: column;
-      }
-      
-      .checkbox-item {
-        width: 100%;
-      }
-    }
-  </style>
+<meta charset="utf-8">
+<title>HentaiStream Configuration</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" type="image/png" href="/logo.png">
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --bg:#0A0F1C;
+    --card:#161737;
+    --fg:#EEF1F7;
+    --muted:#5F67AD;
+    --preview:#5A5F8F;
+    --box:#0E0B1F;
+    --primary:#3926A6;
+    --primary-hover:#5a42d6;
+    --border:rgba(255,255,255,.08);
+    --shadow:0 28px 96px rgba(0,0,0,.46);
+    --radius:26px;
+    --ctl-h:50px;
+    --pill-h: var(--ctl-h);
+    --pill-gap:10px;
+  }
+  html,body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans",sans-serif;}
+  .wrap{max-width:1100px;margin:56px auto;padding:0 32px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:48px;}
+  h1{font-weight:800;font-size:38px;letter-spacing:.2px;margin:0 0 8px;text-align:center;}
+  .subtle{color:var(--muted);text-align:center;margin:-2px 0 34px;}
+  .warning-badge{display:inline-block;background:var(--primary);color:white;padding:4px 12px;border-radius:20px;font-size:12px;}
+  .columns{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start}
+  @media (max-width: 1080px){ .columns{grid-template-columns:1fr;gap:28px} }
+  .stack{display:grid;grid-template-columns:1fr;row-gap:22px}
+  .full-width{grid-column:1/-1}
+  label{display:block;font-weight:600;font-size:15px;margin:0 0 8px;}
+  .section-title{font-weight:600;font-size:15px;margin:2px 0 8px;}
+  .control{width:100%;background:var(--box);color:var(--fg);border:1px solid transparent;border-radius:16px;padding:0 16px;height:var(--ctl-h);line-height:calc(var(--ctl-h) - 2px);outline:none;}
+  .control:focus{box-shadow:0 0 0 2px rgba(57,38,166,.35);border-color:var(--primary)}
+  select.control{appearance:none;background-image:linear-gradient(45deg,transparent 50%, var(--preview) 50%),linear-gradient(135deg, var(--preview) 50%, transparent 50%);background-position:calc(100% - 16px) 50%, calc(100% - 11px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat;padding-right:44px}
+  .help{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.45}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:18px;border:2px solid transparent;padding:14px 18px;min-width:220px;cursor:pointer;text-decoration:none;color:var(--fg);transition:transform .05s ease, box-shadow .2s ease, background .2s ease, border .2s ease;}
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:var(--primary);border-color:var(--primary)}
+  .btn-primary:hover{box-shadow:0 12px 38px rgba(57,38,166,.35);background:var(--primary-hover)}
+  .btn-outline{background:transparent;border-color:var(--primary);color:var(--fg)}
+  .btn-outline:hover{background:rgba(57,38,166,.08)}
+  .btn-sm{min-width:auto;padding:8px 14px;border-radius:12px;border-width:1px;height:40px}
+  .toggle-box{display:flex;align-items:center;gap:12px;background:var(--box);border:1px solid transparent;border-radius:16px;padding:12px 16px;height:var(--ctl-h);cursor:pointer;user-select:none;transition:all 0.2s ease}
+  .toggle-box:hover{border-color:rgba(57,38,166,.3)}
+  .toggle-box input{transform:scale(1.1);accent-color:var(--primary)}
+  .toggle-box .label{font-weight:600}
+  .blacklist-controls{display:grid;grid-template-columns:1fr auto auto;gap:var(--pill-gap);align-items:center}
+  .blacklist-grid{display:grid;gap:var(--pill-gap);margin-top:10px;min-height:calc(var(--pill-h) + var(--pill-gap))}
+  .blacklist-grid.one{grid-template-columns:repeat(2, 1fr)}
+  .blacklist-grid.two{grid-template-columns:repeat(3, 1fr)}
+  @media (max-width: 640px){ .blacklist-grid.one, .blacklist-grid.two{grid-template-columns:1fr} }
+  .pill{display:flex;align-items:center;background:var(--box);border:1px solid transparent;border-radius:16px;height:var(--pill-h);padding:0 12px;width:100%;overflow:hidden;animation:fadeIn 0.3s ease-out}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .pill .txt{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+  .pill .handle{opacity:.8;cursor:pointer;font-size:16px;color:var(--muted);border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;transition:all 0.2s ease;margin-left:auto}
+  .pill .handle:hover{background:rgba(57,38,166,0.15);transform:scale(1.1)}
+  .buttons{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:32px}
+  @media (max-width: 720px){ .buttons{grid-template-columns:1fr} }
+  code.inline{background:var(--box);border:1px solid transparent;padding:6px 12px;border-radius:8px;font-size:12px;color:var(--preview);display:block;word-break:break-all;line-height:1.4;min-height:calc(2 * 1.4em);white-space:pre-wrap;overflow-wrap:anywhere}
+  .footline{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--pill-gap);flex-wrap:wrap;margin-top:16px}
+  .manifest-container{flex: 1;min-width:0}
+  .manifest-label{color:var(--muted);font-size:14px;margin-bottom:8px;font-weight:500}
+  .hidden{display:none !important}
+  
+  .empty-state{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;background:var(--box);border:1px solid transparent;border-radius:16px;height:var(--pill-h);padding:0 12px;width:100%}
+  /* Loading spinner */
+  .loading{display:flex;align-items:center;justify-content:center;padding:20px;color:var(--muted)}
+  .loading::after{content:'';width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin-left:10px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <img src="/logo.png" alt="HentaiStream" class="logo">
+  <div class="wrap">
+    <div class="card">
       <h1>HentaiStream</h1>
-      <p>Configure your addon settings</p>
-      <span class="warning-badge">🔞 18+ ONLY</span>
-    </div>
+      <p class="subtle">Configure your addon settings <span class="warning-badge">18+</span></p>
 
-    <!-- Providers Section -->
-    <div class="card">
-      <h2>Providers</h2>
-      <div class="form-group">
-        <label>Select which providers to use:</label>
-        <div class="checkbox-group" id="providers">
-          <div class="checkbox-item checked" data-value="hmm">
-            <span class="checkmark"></span>
-            <span>HentaiMama</span>
-          </div>
-          <div class="checkbox-item checked" data-value="hse">
-            <span class="checkmark"></span>
-            <span>HentaiSea</span>
-          </div>
-          <div class="checkbox-item checked" data-value="htv">
-            <span class="checkmark"></span>
-            <span>HentaiTV</span>
+      <div class="columns">
+        <!-- LEFT COLUMN: Genre Blacklist -->
+        <div class="stack">
+          <div>
+            <label>Blacklist Genres</label>
+            <div class="blacklist-controls">
+              <select id="genrePicker" class="control">
+                <option value="">Select genre to exclude...</option>
+              </select>
+              <button class="btn btn-sm btn-outline" id="genreAdd" type="button">Add</button>
+              <button class="btn btn-sm btn-outline" id="genreClear" type="button">Clear</button>
+            </div>
+            <div class="help">Series with these genres will be hidden from all catalogs. <span style="color:var(--muted)">(Max 20)</span></div>
+            <div id="genrePills" class="blacklist-grid one"></div>
           </div>
         </div>
-        <p class="hint">Disabling providers will exclude their content from results</p>
-      </div>
-    </div>
 
-    <!-- Blacklists Section -->
-    <div class="card">
-      <h2>Content Filters</h2>
-      
-      <div class="form-group">
-        <label>Blacklist Genres:</label>
-        <div class="multi-select" id="genreBlacklist">
-          <div class="multi-select-trigger" onclick="toggleDropdown('genreBlacklist')">
-            <span class="placeholder">Select genres to hide...</span>
-            <span class="selected-count" style="display: none;">0</span>
-          </div>
-          <div class="multi-select-dropdown">
-            <div class="multi-select-search">
-              <input type="text" placeholder="Search genres..." oninput="filterOptions('genreBlacklist', this.value)">
+        <!-- RIGHT COLUMN: Studio Blacklist -->
+        <div class="stack">
+          <div>
+            <label>Blacklist Studios</label>
+            <div class="blacklist-controls">
+              <select id="studioPicker" class="control">
+                <option value="">Select studio to exclude...</option>
+              </select>
+              <button class="btn btn-sm btn-outline" id="studioAdd" type="button">Add</button>
+              <button class="btn btn-sm btn-outline" id="studioClear" type="button">Clear</button>
             </div>
-            <div class="multi-select-options">
-              <!-- Populated by JS -->
-            </div>
+            <div class="help">Series from these studios will be hidden from all catalogs. <span style="color:var(--muted)">(Max 20)</span></div>
+            <div id="studioPills" class="blacklist-grid one"></div>
           </div>
         </div>
-        <p class="hint">Series with these genres will be hidden from catalogs</p>
       </div>
 
-      <div class="form-group">
-        <label>Blacklist Studios:</label>
-        <div class="multi-select" id="studioBlacklist">
-          <div class="multi-select-trigger" onclick="toggleDropdown('studioBlacklist')">
-            <span class="placeholder">Select studios to hide...</span>
-            <span class="selected-count" style="display: none;">0</span>
-          </div>
-          <div class="multi-select-dropdown">
-            <div class="multi-select-search">
-              <input type="text" placeholder="Search studios..." oninput="filterOptions('studioBlacklist', this.value)">
-            </div>
-            <div class="multi-select-options">
-              <!-- Populated by JS -->
-            </div>
-          </div>
+      <!-- Display Settings - Full Width Below -->
+      <div style="margin-top:22px">
+        <div class="section-title">Display Settings</div>
+        <div id="toggleShowCounts" class="toggle-box" role="button" tabindex="0" aria-pressed="true">
+          <input id="showCounts" type="checkbox" checked />
+          <div class="label">Show counts on filter options</div>
         </div>
-        <p class="hint">Series from these studios will be hidden from catalogs</p>
+        <div class="help">When enabled, genres, studios, and years will show item counts like "Action (125)". Disable for cleaner display.</div>
+      </div>
+
+      <div class="buttons">
+        <a id="installApp" class="btn btn-primary" style="width:100%">Install to Stremio</a>
+        <a id="installWeb" class="btn btn-outline" style="width:100%">Install to Web</a>
+      </div>
+
+      <div class="footline">
+        <div class="manifest-container">
+          <div class="manifest-label">Manifest URL:</div>
+          <code id="manifestUrl" class="inline"></code>
+        </div>
       </div>
     </div>
 
-    <!-- Install Section -->
-    <div class="card install-section">
-      <h2>Install Addon</h2>
-      <p style="color: #8892b0; margin-bottom: 10px;">Choose how to install the addon with your settings</p>
-      
-      <div class="install-buttons">
-        <a id="installStremio" href="#" class="install-btn primary">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-          </svg>
-          Install to Stremio
-        </a>
-        <a id="installWeb" href="#" target="_blank" class="install-btn secondary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="2" y1="12" x2="22" y2="12"></line>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-          </svg>
-          Install to Stremio Web
-        </a>
-      </div>
-
-      <div class="url-display">
-        <input type="text" id="manifestUrl" readonly>
-        <button onclick="copyUrl()">Copy URL</button>
-      </div>
-      <p class="copy-success" id="copySuccess">✓ Copied to clipboard!</p>
-    </div>
-
-    <div class="footer">
-      <p>HentaiStream v0.1.0 • <a href="https://github.com/yourusername/hentaistream-addon" target="_blank">GitHub</a></p>
-      <p style="margin-top: 5px;">Aggregates content from HentaiMama, HentaiSea, and HentaiTV</p>
+    <div style="text-align:center;margin-top:24px;color:var(--muted);font-size:13px">
+      HentaiStream v0.2.0 • Aggregates content from HentaiMama, HentaiSea, and HentaiTV
     </div>
   </div>
 
   <script>
-    // Configuration state
-    const config = {
-      providers: ['hmm', 'hse', 'htv'],
+  (function(){
+    'use strict';
+    
+    const MAX_BLACKLIST = 20;
+    const originHost = window.location.origin;
+    
+    // State
+    const state = {
       blacklistGenres: [],
-      blacklistStudios: []
+      blacklistStudios: [],
+      showCounts: true
     };
-
-    // Options data (will be fetched from server)
+    
+    // Load from localStorage
+    try { 
+      const saved = JSON.parse(localStorage.getItem('hentaistream_config') || '{}');
+      Object.assign(state, saved);
+    } catch {}
+    
+    // Load from URL parameters (for existing installations)
+    function loadFromURL() {
+      const params = new URLSearchParams(window.location.search);
+      
+      // Also check path-based config
+      const pathMatch = window.location.pathname.match(/^\/([^/]+)\/manifest\.json/);
+      if (pathMatch) {
+        const configStr = decodeURIComponent(pathMatch[1]);
+        configStr.split('&').forEach(part => {
+          const [key, value] = part.split('=');
+          if (key === 'bg' && value) {
+            state.blacklistGenres = value.split(',').map(s => s.trim());
+          }
+          if (key === 'bs' && value) {
+            state.blacklistStudios = value.split(',').map(s => s.trim());
+          }
+          if (key === 'showCounts') {
+            state.showCounts = value !== '0';
+          }
+        });
+      }
+      
+      // Query params
+      if (params.get('bg')) {
+        state.blacklistGenres = params.get('bg').split(',').map(s => s.trim());
+      }
+      if (params.get('bs')) {
+        state.blacklistStudios = params.get('bs').split(',').map(s => s.trim());
+      }
+      if (params.get('showCounts')) {
+        state.showCounts = params.get('showCounts') !== '0';
+      }
+    }
+    
+    loadFromURL();
+    
+    // DOM elements
+    const $ = sel => document.querySelector(sel);
+    const genrePickerEl = $('#genrePicker');
+    const genreAddEl = $('#genreAdd');
+    const genreClearEl = $('#genreClear');
+    const genrePillsEl = $('#genrePills');
+    const studioPickerEl = $('#studioPicker');
+    const studioAddEl = $('#studioAdd');
+    const studioClearEl = $('#studioClear');
+    const studioPillsEl = $('#studioPills');
+    const showCountsEl = $('#showCounts');
+    const manifestEl = $('#manifestUrl');
+    const appBtn = $('#installApp');
+    const webBtn = $('#installWeb');
+    
+    // Hydrate toggle from state
+    showCountsEl.checked = state.showCounts !== false;
+    
+    // Options data (fetched from server)
     let genreOptions = [];
     let studioOptions = [];
-
-    // Initialize
-    document.addEventListener('DOMContentLoaded', async () => {
-      // Fetch options from server
+    
+    function persist() {
+      localStorage.setItem('hentaistream_config', JSON.stringify(state));
+    }
+    
+    // Fetch options from server
+    async function fetchOptions() {
       try {
         const response = await fetch('/api/options');
         const data = await response.json();
+        
+        // Use clean versions for display in dropdowns
         genreOptions = data.genres || [];
         studioOptions = data.studios || [];
         
-        populateMultiSelect('genreBlacklist', genreOptions);
-        populateMultiSelect('studioBlacklist', studioOptions);
+        populateSelect(genrePickerEl, genreOptions, 'Select genre to exclude...');
+        populateSelect(studioPickerEl, studioOptions, 'Select studio to exclude...');
+        
+        // Re-render pills with updated options
+        renderGenrePills();
+        renderStudioPills();
       } catch (error) {
         console.error('Failed to fetch options:', error);
+        genrePickerEl.innerHTML = '<option value="">Failed to load genres</option>';
+        studioPickerEl.innerHTML = '<option value="">Failed to load studios</option>';
       }
-
-      // Parse existing config from URL query parameters
-      parseExistingConfig();
-
-      // Setup provider checkboxes
-      document.querySelectorAll('#providers .checkbox-item').forEach(item => {
-        item.addEventListener('click', (e) => {
+    }
+    
+    function populateSelect(selectEl, options, placeholder) {
+      // For dropdown, show clean names (without counts) for cleaner UI
+      const cleanOptions = options.map(opt => {
+        // Remove count suffix like " (125)"
+        return opt.replace(/\s*\(\d+\)$/, '').trim();
+      });
+      
+      // Deduplicate
+      const unique = [...new Set(cleanOptions)].sort();
+      
+      selectEl.innerHTML = `<option value="">${placeholder}</option>` +
+        unique.map(opt => `<option value="${opt.toLowerCase()}">${opt}</option>`).join('');
+    }
+    
+    function renderGenrePills() {
+      genrePillsEl.innerHTML = '';
+      const count = state.blacklistGenres.length;
+      genrePillsEl.classList.toggle('one', count <= 4);
+      genrePillsEl.classList.toggle('two', count > 4);
+      
+      const atCap = count >= MAX_BLACKLIST;
+      if (atCap) {
+        genreAddEl.classList.add('disabled');
+        genreAddEl.setAttribute('disabled', 'disabled');
+      } else {
+        genreAddEl.classList.remove('disabled');
+        genreAddEl.removeAttribute('disabled');
+      }
+      
+      if (count === 0) {
+        genrePillsEl.innerHTML = '<div class="empty-state">No genres blacklisted</div>';
+        return;
+      }
+      
+      state.blacklistGenres.forEach((genre, idx) => {
+        const pill = document.createElement('div');
+        pill.className = 'pill';
+        // Format display name: capitalize first letter
+        const displayName = genre.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        pill.innerHTML = `
+          <div class="txt">${displayName}</div>
+          <div class="handle" onclick="removeGenre(${idx})" title="Remove ${displayName}">✕</div>
+        `;
+        genrePillsEl.appendChild(pill);
+      });
+    }
+    
+    function renderStudioPills() {
+      studioPillsEl.innerHTML = '';
+      const count = state.blacklistStudios.length;
+      studioPillsEl.classList.toggle('one', count <= 4);
+      studioPillsEl.classList.toggle('two', count > 4);
+      
+      const atCap = count >= MAX_BLACKLIST;
+      if (atCap) {
+        studioAddEl.classList.add('disabled');
+        studioAddEl.setAttribute('disabled', 'disabled');
+      } else {
+        studioAddEl.classList.remove('disabled');
+        studioAddEl.removeAttribute('disabled');
+      }
+      
+      if (count === 0) {
+        studioPillsEl.innerHTML = '<div class="empty-state">No studios blacklisted</div>';
+        return;
+      }
+      
+      state.blacklistStudios.forEach((studio, idx) => {
+        const pill = document.createElement('div');
+        pill.className = 'pill';
+        // Format display name: capitalize each word
+        const displayName = studio.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        pill.innerHTML = `
+          <div class="txt">${displayName}</div>
+          <div class="handle" onclick="removeStudio(${idx})" title="Remove ${displayName}">✕</div>
+        `;
+        studioPillsEl.appendChild(pill);
+      });
+    }
+    
+    // Global remove functions
+    window.removeGenre = function(idx) {
+      state.blacklistGenres.splice(idx, 1);
+      persist();
+      renderGenrePills();
+      rerender();
+    };
+    
+    window.removeStudio = function(idx) {
+      state.blacklistStudios.splice(idx, 1);
+      persist();
+      renderStudioPills();
+      rerender();
+    };
+    
+    // Event handlers
+    genreAddEl.onclick = () => {
+      if (state.blacklistGenres.length >= MAX_BLACKLIST) return;
+      const value = genrePickerEl.value.trim();
+      if (value && !state.blacklistGenres.includes(value)) {
+        state.blacklistGenres.push(value);
+        genrePickerEl.value = '';
+        persist();
+        renderGenrePills();
+        rerender();
+      }
+    };
+    
+    genreClearEl.onclick = () => {
+      state.blacklistGenres = [];
+      persist();
+      renderGenrePills();
+      rerender();
+    };
+    
+    studioAddEl.onclick = () => {
+      if (state.blacklistStudios.length >= MAX_BLACKLIST) return;
+      const value = studioPickerEl.value.trim();
+      if (value && !state.blacklistStudios.includes(value)) {
+        state.blacklistStudios.push(value);
+        studioPickerEl.value = '';
+        persist();
+        renderStudioPills();
+        rerender();
+      }
+    };
+    
+    studioClearEl.onclick = () => {
+      state.blacklistStudios = [];
+      persist();
+      renderStudioPills();
+      rerender();
+    };
+    
+    showCountsEl.onchange = () => {
+      state.showCounts = showCountsEl.checked;
+      persist();
+      rerender();
+    };
+    
+    // Wire toggle box click
+    function wireToggle(boxId, inputEl) {
+      const box = document.getElementById(boxId);
+      if (!box) return;
+      const updateAria = () => box.setAttribute('aria-pressed', inputEl.checked ? 'true' : 'false');
+      box.addEventListener('click', (e) => {
+        if (e.target === inputEl) return;
+        inputEl.checked = !inputEl.checked;
+        inputEl.dispatchEvent(new Event('change'));
+        updateAria();
+      });
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          e.stopPropagation();
-          
-          // Prevent unchecking if this is the last enabled provider
-          if (item.classList.contains('disabled')) {
-            return;
-          }
-          
-          item.classList.toggle('checked');
-          updateProviders();
-        });
-      });
-
-      // Close dropdowns when clicking outside
-      document.addEventListener('click', (e) => {
-        if (!e.target.closest('.multi-select')) {
-          document.querySelectorAll('.multi-select-dropdown').forEach(d => d.classList.remove('open'));
+          inputEl.checked = !inputEl.checked;
+          inputEl.dispatchEvent(new Event('change'));
+          updateAria();
         }
       });
-
-      updateInstallLinks();
-    });
-
-    function parseExistingConfig() {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        
-        // Providers
-        if (params.get('providers')) {
-          config.providers = params.get('providers').split(',');
-          document.querySelectorAll('#providers .checkbox-item').forEach(item => {
-            const isChecked = config.providers.includes(item.dataset.value);
-            item.classList.toggle('checked', isChecked);
-          });
-        }
-        
-        // Blacklist genres
-        if (params.get('bg')) {
-          config.blacklistGenres = params.get('bg').split(',');
-        }
-        
-        // Blacklist studios  
-        if (params.get('bs')) {
-          config.blacklistStudios = params.get('bs').split(',');
-        }
-        
-        updateInstallLinks();
-        updateProviderUI();
-      } catch (e) {
-        console.error('Error parsing config:', e);
-      }
+      updateAria();
     }
-
-    function populateMultiSelect(id, options) {
-      const container = document.querySelector(`#${id} .multi-select-options`);
-      container.innerHTML = options.map(opt => `
-        <div class="multi-select-option" data-value="${opt.toLowerCase()}" onclick="toggleOption('${id}', this)">
-          <span class="option-check">✓</span>
-          <span>${opt}</span>
-        </div>
-      `).join('');
-
-      // Mark already selected options
-      const selected = id === 'genreBlacklist' ? config.blacklistGenres : config.blacklistStudios;
-      selected.forEach(val => {
-        const option = container.querySelector(`[data-value="${val.toLowerCase()}"]`);
-        if (option) option.classList.add('selected');
-      });
-      updateMultiSelectCount(id);
-    }
-
-    function toggleDropdown(id) {
-      const dropdown = document.querySelector(`#${id} .multi-select-dropdown`);
-      const wasOpen = dropdown.classList.contains('open');
+    wireToggle('toggleShowCounts', showCountsEl);
+    
+    // Build config URL
+    function buildConfigPath() {
+      const parts = [];
       
-      // Close all dropdowns
-      document.querySelectorAll('.multi-select-dropdown').forEach(d => d.classList.remove('open'));
-      
-      // Toggle this one
-      if (!wasOpen) {
-        dropdown.classList.add('open');
-      }
-    }
-
-    function filterOptions(id, query) {
-      const options = document.querySelectorAll(`#${id} .multi-select-option`);
-      const lowerQuery = query.toLowerCase();
-      
-      options.forEach(option => {
-        const text = option.textContent.toLowerCase();
-        option.style.display = text.includes(lowerQuery) ? 'flex' : 'none';
-      });
-    }
-
-    function toggleOption(id, element) {
-      element.classList.toggle('selected');
-      
-      const value = element.dataset.value;
-      const list = id === 'genreBlacklist' ? config.blacklistGenres : config.blacklistStudios;
-      
-      if (element.classList.contains('selected')) {
-        if (!list.includes(value)) list.push(value);
-      } else {
-        const index = list.indexOf(value);
-        if (index > -1) list.splice(index, 1);
+      if (state.blacklistGenres.length > 0) {
+        parts.push(`bg=${state.blacklistGenres.join(',')}`);
       }
       
-      updateMultiSelectCount(id);
-      updateInstallLinks();
-    }
-
-    function updateMultiSelectCount(id) {
-      const list = id === 'genreBlacklist' ? config.blacklistGenres : config.blacklistStudios;
-      const trigger = document.querySelector(`#${id} .multi-select-trigger`);
-      const placeholder = trigger.querySelector('.placeholder');
-      const count = trigger.querySelector('.selected-count');
-      
-      if (list.length > 0) {
-        placeholder.textContent = list.slice(0, 3).join(', ') + (list.length > 3 ? '...' : '');
-        count.textContent = list.length;
-        count.style.display = 'inline';
-      } else {
-        placeholder.textContent = id === 'genreBlacklist' ? 'Select genres to hide...' : 'Select studios to hide...';
-        count.style.display = 'none';
-      }
-    }
-
-    function updateProviders() {
-      config.providers = [];
-      document.querySelectorAll('#providers .checkbox-item.checked').forEach(item => {
-        config.providers.push(item.dataset.value);
-      });
-      
-      // Ensure at least one provider remains enabled
-      if (config.providers.length === 0) {
-        config.providers = ['hmm'];
-        const firstItem = document.querySelector('#providers .checkbox-item[data-value="hmm"]');
-        if (firstItem) firstItem.classList.add('checked');
+      if (state.blacklistStudios.length > 0) {
+        parts.push(`bs=${state.blacklistStudios.join(',')}`);
       }
       
-      updateProviderUI();
-      updateInstallLinks();
-    }
-
-    // Update provider UI to disable the last enabled provider
-    function updateProviderUI() {
-      const allProviderItems = document.querySelectorAll('#providers .checkbox-item');
-      const checkedCount = config.providers.length;
-      
-      allProviderItems.forEach(item => {
-        const isChecked = item.classList.contains('checked');
-        
-        // If only 1 provider is enabled, disable that one so user can't uncheck it
-        if (checkedCount === 1 && isChecked) {
-          item.classList.add('disabled');
-          item.style.opacity = '0.6';
-          item.style.cursor = 'not-allowed';
-          item.title = 'At least one provider must remain enabled';
-        } else {
-          item.classList.remove('disabled');
-          item.style.opacity = '1';
-          item.style.cursor = 'pointer';
-          item.title = '';
-        }
-      });
-    }
-
-    function buildQueryString() {
-      const params = new URLSearchParams();
-      
-      // Providers (only if not all enabled)
-      if (config.providers.length > 0 && config.providers.length < 3) {
-        params.set('providers', config.providers.join(',').toLowerCase());
+      if (!state.showCounts) {
+        parts.push('showCounts=0');
       }
       
-      // Blacklist genres
-      if (config.blacklistGenres.length > 0) {
-        const genres = config.blacklistGenres.map(g => g.toLowerCase().replace(/\s+/g, '-')).join(',');
-        params.set('bg', genres);
-      }
-      
-      // Blacklist studios
-      if (config.blacklistStudios.length > 0) {
-        const studios = config.blacklistStudios.map(s => s.toLowerCase().replace(/\s+/g, '-')).join(',');
-        params.set('bs', studios);
-      }
-      
-      return params.toString();
+      return parts.join('&');
     }
-
-    function updateInstallLinks() {
-      const queryStr = buildQueryString();
-      const host = window.location.host;
-      const protocol = window.location.protocol;
-      
-      // Use PATH-BASED config URLs (not query-string) so Stremio includes config in all requests
-      // Format: /config/manifest.json where config is URL-encoded params
-      // e.g., /bg=3d&providers=hmm,hse/manifest.json
+    
+    function rerender() {
+      const configPath = buildConfigPath();
       let manifestUrl;
-      if (queryStr) {
-        manifestUrl = `${protocol}//${host}/${queryStr}/manifest.json`;
+      
+      if (configPath) {
+        manifestUrl = `${originHost}/${configPath}/manifest.json`;
       } else {
-        manifestUrl = `${protocol}//${host}/manifest.json`;
+        manifestUrl = `${originHost}/manifest.json`;
       }
       
-      // Update install links with path-based config
-      if (queryStr) {
-        document.getElementById('installStremio').href = `stremio://${host}/${queryStr}/manifest.json`;
+      // Display URL without protocol
+      const displayUrl = manifestUrl.replace(/^https?:\/\//, '');
+      manifestEl.textContent = displayUrl;
+      
+      // Install links
+      if (configPath) {
+        appBtn.href = `stremio://${window.location.host}/${configPath}/manifest.json`;
       } else {
-        document.getElementById('installStremio').href = `stremio://${host}/manifest.json`;
+        appBtn.href = `stremio://${window.location.host}/manifest.json`;
       }
-      document.getElementById('installWeb').href = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(manifestUrl)}`;
-      document.getElementById('manifestUrl').value = manifestUrl;
+      webBtn.href = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(manifestUrl)}`;
     }
-
-    function copyUrl() {
-      const urlInput = document.getElementById('manifestUrl');
-      navigator.clipboard.writeText(urlInput.value).then(() => {
-        const success = document.getElementById('copySuccess');
-        success.classList.add('show');
-        setTimeout(() => success.classList.remove('show'), 2000);
-      });
-    }
+    
+    // Initialize
+    fetchOptions();
+    renderGenrePills();
+    renderStudioPills();
+    rerender();
+  })();
   </script>
 </body>
 </html>

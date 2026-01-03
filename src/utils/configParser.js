@@ -11,7 +11,9 @@ const DEFAULT_CONFIG = {
   providers: ['hmm', 'hse', 'htv'],
   // No blacklists by default
   blacklistGenres: [],
-  blacklistStudios: []
+  blacklistStudios: [],
+  // Show counts on filter options by default
+  showCounts: true
 };
 
 /**
@@ -48,6 +50,11 @@ function parseConfig(query) {
     if (query.bs || query.blacklist_studios) {
       const value = query.bs || query.blacklist_studios;
       config.blacklistStudios = value.split(',').map(s => s.trim().toLowerCase());
+    }
+
+    // Show counts toggle (default true, only set when explicitly disabled)
+    if (query.showCounts === '0' || query.showCounts === 'false') {
+      config.showCounts = false;
     }
   } catch (error) {
     console.error('Error parsing config:', error.message);

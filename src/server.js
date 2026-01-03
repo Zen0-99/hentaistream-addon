@@ -677,6 +677,26 @@ app.get('/manifest.json', async (req, res) => {
       }));
     }
     
+    // Remove counts from filter options if showCounts is disabled
+    if (userConfig.showCounts === false) {
+      manifest.catalogs = manifest.catalogs.map(cat => {
+        if (!cat.extra) return cat;
+        return {
+          ...cat,
+          extra: cat.extra.map(ext => {
+            if (ext.name === 'genre' && ext.options) {
+              // Remove count suffix like " (125)" from each option
+              const cleanOptions = ext.options.map(opt => 
+                opt.replace(/\s*\(\d+\)$/, '').trim()
+              );
+              return { ...ext, options: cleanOptions };
+            }
+            return ext;
+          })
+        };
+      });
+    }
+    
     logger.info(`Serving manifest (${JSON.stringify(manifest).length} bytes)`);
     
     // Trigger catalog pre-warming in background when manifest is served (addon install)
@@ -742,6 +762,26 @@ app.get('/:config/manifest.json', async (req, res) => {
                 )
               );
               return { ...ext, options: filteredOptions };
+            }
+            return ext;
+          })
+        };
+      });
+    }
+    
+    // Remove counts from filter options if showCounts is disabled
+    if (userConfig.showCounts === false) {
+      manifest.catalogs = manifest.catalogs.map(cat => {
+        if (!cat.extra) return cat;
+        return {
+          ...cat,
+          extra: cat.extra.map(ext => {
+            if (ext.name === 'genre' && ext.options) {
+              // Remove count suffix like " (125)" from each option
+              const cleanOptions = ext.options.map(opt => 
+                opt.replace(/\s*\(\d+\)$/, '').trim()
+              );
+              return { ...ext, options: cleanOptions };
             }
             return ext;
           })
