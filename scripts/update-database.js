@@ -834,10 +834,10 @@ async function checkFutureDates(catalog) {
  * Scan a provider for new content
  * Returns array of new/updated series
  * 
- * NOTE: HentaiSea is handled specially - we scan ALL items on page 1
- * because their "latest" page may have new items mixed with old ones.
- * HentaiMama uses the new-monthly-hentai page which shows individual episodes.
- * Other providers use consecutive existing detection to stop early.
+ * NOTE: All providers scan ALL items on page 1 to avoid missing new content:
+ * - HentaiMama: Uses new-monthly-hentai page which shows individual episodes
+ * - HentaiTV: Uses search page (https://hentai.tv/?s=) sorted by newest
+ * - HentaiSea: Uses latest-series page sorted by recent
  */
 async function scanProvider(scraper, providerName, existingCatalog, normalizedIndex) {
   const newItems = [];
@@ -845,10 +845,11 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
   let consecutiveExisting = 0;
   let page = 1;
   
-  // HentaiSea and HentaiMama: Scan all items on page 1, don't use consecutive threshold
+  // ALL providers: Scan all items on page 1, don't use consecutive threshold
   const isHentaiSea = providerName === 'hentaisea';
   const isHentaiMama = providerName === 'hentaimama';
-  const maxPages = (isHentaiSea || isHentaiMama) ? 1 : CONFIG.maxPagesToScan;
+  const isHentaiTV = providerName === 'hentaitv';
+  const maxPages = 1; // Always scan first page only for all providers
   
   logger.info(`\n📡 Scanning ${providerName} for new content...`);
   if (isHentaiSea) {
@@ -857,12 +858,11 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
   if (isHentaiMama) {
     logger.info(`  (HentaiMama: using new-monthly-hentai page for latest episodes)`);
   }
+  if (isHentaiTV) {
+    logger.info(`  (HentaiTV: scanning ALL items on search page - sorted by newest)`);
+  }
   
   while (page <= maxPages) {
-    // For standard providers, check consecutive threshold
-    if (!isHentaiSea && !isHentaiMama && consecutiveExisting >= CONFIG.consecutiveExistingThreshold) {
-      break;
-    }
     
     try {
       let items = [];
@@ -968,14 +968,9 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
         if (existing) {
           consecutiveExisting++;
           logger.debug(`  ↩️ Existing: "${item.name}" (${consecutiveExisting} consecutive)`);
-          
-          // For HentaiSea, don't stop - continue scanning all items on the page
-          if (!isHentaiSea && consecutiveExisting >= CONFIG.consecutiveExistingThreshold) {
-            logger.info(`  🛑 Found ${CONFIG.consecutiveExistingThreshold} consecutive existing entries, stopping scan`);
-            break;
-          }
+          // Don't stop early - continue scanning all items on the page
         } else {
-          consecutiveExisting = 0; // Reset counter (only matters for non-HentaiSea)
+          consecutiveExisting = 0;
           newItems.push(item);
           logger.debug(`  ✨ New: "${item.name}"`);
         }
