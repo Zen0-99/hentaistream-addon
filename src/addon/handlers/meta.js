@@ -21,7 +21,7 @@ async function markSeriesAsBroken(seriesId) {
     brokenSeries.push(seriesId);
     // Store for 24 hours - broken series may get fixed
     await cache.set(brokenSeriesKey, brokenSeries, 86400);
-    logger.info(`Marked series as broken: ${seriesId}`);
+    logger.debug(`Marked series as broken: ${seriesId}`);
   }
 }
 
@@ -31,11 +31,11 @@ async function markSeriesAsBroken(seriesId) {
 async function metaHandler(args) {
   const { type, id } = args;
   
-  logger.info(`Meta request: ${id}`, { type });
+  logger.debug(`Meta request: ${id}`, { type });
 
   // Validate type - accept both 'series' and 'hentai'
   if (type !== 'series' && type !== 'hentai') {
-    logger.warn(`Unsupported type: ${type}`);
+    logger.debug(`Unsupported type: ${type}`);
     return { meta: null };
   }
 
@@ -45,7 +45,7 @@ async function metaHandler(args) {
   if (isDatabaseReady()) {
     dbData = getFromDatabase(id);
     if (dbData && dbData.hasFullMeta && dbData.episodes && dbData.episodes.length > 0) {
-      logger.info(`⚡ Found FULL metadata in database for ${id} - returning instantly (no caching/scraping)`);
+      logger.debug(`Found FULL metadata in database for ${id}`);
       
       // Build and return meta directly without any caching - database IS the cache
       return buildMetaResponse(dbData, dbData);
@@ -74,14 +74,14 @@ async function metaHandler(args) {
         scraper = oppaiStreamScraper;
       }
       
-      logger.info(`🔍 Scraping metadata for ${id} (not in database or incomplete)`);
+      logger.debug(`Scraping metadata for ${id} (not in database or incomplete)`);
       data = await scraper.getMetadata(id);
     } catch (error) {
       logger.error(`Failed to fetch metadata for ${id}: ${error.message}`);
       
       // If scraping failed but we have database data, use that
       if (dbData) {
-        logger.info(`📦 Using database data as fallback for ${id}`);
+        logger.debug(`Using database data as fallback for ${id}`);
         data = dbData;
       } else {
         // Mark series as broken if it returns 500 error
@@ -93,7 +93,7 @@ async function metaHandler(args) {
     }
     
     if (!data && !dbData) {
-      logger.warn(`No metadata found for ${id}`);
+      logger.debug(`No metadata found for ${id}`);
       return { meta: null };
     }
     
@@ -104,13 +104,13 @@ async function metaHandler(args) {
         data.rating = dbData.rating;
         data.ratingType = dbData.ratingType;
         data.voteCount = dbData.voteCount;
-        logger.info(`📦 Merged rating from database: ${dbData.rating}`);
+        logger.debug(`Merged rating from database: ${dbData.rating}`);
       }
       
       // Use database description if scraped doesn't have one or is promotional
       if ((!data.description || isPromotionalDescription(data.description)) && dbData.description) {
         data.description = dbData.description;
-        logger.info(`📦 Merged description from database`);
+        logger.debug(`Merged description from database`);
       }
       
       // Use database genres if scraped doesn't have any
@@ -140,7 +140,7 @@ function buildMetaResponse(data, dbData) {
     let displayRating = '★ N/A'; // Default to N/A
     
     // Debug: log rating info
-    logger.info(`Rating debug for ${data.name}: rating=${data.rating}, voteCount=${data.voteCount}, ratingBreakdown=${JSON.stringify(data.ratingBreakdown)}, typeof rating=${typeof data.rating}`);
+    logger.debug(`Rating debug for ${data.name}: rating=${data.rating}, voteCount=${data.voteCount}, ratingBreakdown=${JSON.stringify(data.ratingBreakdown)}`);
     
     if (data.ratingBreakdown && Object.keys(data.ratingBreakdown).length >= 1) {
       const providerNames = {
@@ -184,7 +184,7 @@ function buildMetaResponse(data, dbData) {
     const genres = data.genres || [];
     
     // Debug: log what data we have
-    logger.info(`Meta data for ${data.name}: studio="${data.studio || 'none'}", genres=${genres.length > 0 ? genres.join(', ') : 'none'}`);
+    logger.debug(`Meta data for ${data.name}: studio="${data.studio || 'none'}", genres=${genres.length > 0 ? genres.join(', ') : 'none'}`);
     
     // Build links array with BOTH genres and studio
     const isLocalhost = config.server.baseUrl.includes('localhost') || config.server.baseUrl.includes('127.0.0.1');

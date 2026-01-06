@@ -84,7 +84,7 @@ async function prewarmCatalogsOnManifest() {
     
     // Skip Top Rated warmup if database is ready (data is pre-bundled)
     if (!dbReady) {
-      logger.info('📊 Pre-warming Top Rated catalog (no database)...');
+      logger.debug('Pre-warming Top Rated catalog (no database)...');
       for (let page = 1; page <= PAGES_TO_PREWARM; page++) {
         const promises = [
           cache.prewarm(
@@ -105,7 +105,7 @@ async function prewarmCatalogsOnManifest() {
         ];
         
         await Promise.allSettled(promises);
-        logger.info(`✓ Top Rated page ${page} pre-warmed`);
+        logger.debug(`Top Rated page ${page} warmed`);
         
         if (page < PAGES_TO_PREWARM) {
           await new Promise(resolve => setTimeout(resolve, DELAY_MS));
@@ -114,7 +114,7 @@ async function prewarmCatalogsOnManifest() {
     }
     
     // Always warm New Releases (catches content since last database build)
-    logger.info(`📅 Pre-warming New Releases (${PAGES_TO_PREWARM} page(s))...`);
+    logger.debug(`Pre-warming New Releases (${PAGES_TO_PREWARM} page(s))...`);
     for (let page = 1; page <= PAGES_TO_PREWARM; page++) {
       const promises = [
         cache.prewarm(
@@ -135,15 +135,15 @@ async function prewarmCatalogsOnManifest() {
       ];
       
       await Promise.allSettled(promises);
-      logger.info(`✓ New Releases page ${page} pre-warmed`);
+      logger.debug(`New Releases page ${page} warmed`);
       
       if (page < PAGES_TO_PREWARM) {
         await new Promise(resolve => setTimeout(resolve, DELAY_MS));
       }
     }
     
-    logger.info('✅ Catalog pre-warming complete!');
-    logger.info(`Cache stats: ${JSON.stringify(cache.getStats())}`);
+    logger.info('Catalog pre-warming complete');
+    logger.debug(`Cache stats: ${JSON.stringify(cache.getStats())}`);
   } catch (error) {
     logger.warn(`Catalog pre-warm error: ${error.message}`);
   }
@@ -169,9 +169,9 @@ app.use((req, res, next) => {
 // Serve static files from public folder (logo, etc.)
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Log all requests - detailed logging to catch 404 issues
+// Log all requests (debug level to reduce noise)
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path} | Query: ${JSON.stringify(req.query)} | Params: ${JSON.stringify(req.params)}`);
+  logger.debug(`${req.method} ${req.path}`);
   next();
 });
 
@@ -216,10 +216,8 @@ function setupSelfPing() {
       const http = require('http');
       const client = pingUrl.startsWith('https') ? https : http;
       
-      const startTime = Date.now();
       client.get(pingUrl, (res) => {
-        const duration = Date.now() - startTime;
-        logger.info(`Self-ping successful (${res.statusCode}) - ${duration}ms`);
+        logger.debug(`Self-ping: ${res.statusCode}`);
       }).on('error', (err) => {
         logger.error('Self-ping failed:', err.message);
       });
@@ -230,7 +228,7 @@ function setupSelfPing() {
 
   // Do an initial ping after 1 minute
   setTimeout(() => {
-    logger.info('Performing initial self-ping...');
+    logger.debug('Initial self-ping');
   }, 60000);
 }
 
@@ -350,11 +348,15 @@ function setupDailyUpdate() {
     logger.info(`[IncrementalUpdate] Next update scheduled for ${nextScheduledUpdate.toISOString()} (in ${Math.round(msToMidnight / 60000)} minutes)`);
     
     setTimeout(async () => {
-      logger.info('[IncrementalUpdate] Running scheduled midnight update...');
-      await runIncrementalDatabaseUpdate();
-      
-      // Schedule next day's update
-      scheduleNextUpdate();
+      try {
+        logger.info('[IncrementalUpdate] Running scheduled midnight update...');
+        await runIncrementalDatabaseUpdate();
+      } catch (error) {
+        logger.error(`[IncrementalUpdate] Scheduled update failed: ${error.message}`);
+      } finally {
+        // Always schedule next day's update, even if this one failed
+        scheduleNextUpdate();
+      }
     }, msToMidnight);
   };
   
@@ -470,7 +472,7 @@ app.get('/video-proxy', async (req, res) => {
     
     // If we have a jwplayer URL, fetch fresh auth token from it
     if (jwplayerUrl) {
-      logger.info(`Video proxy: Fetching fresh auth from jwplayer...`);
+      logger.debug(`Video proxy: Fetching fresh auth from jwplayer...`);
       
       try {
         const jwResponse = await axios.get(jwplayerUrl, {
@@ -484,7 +486,7 @@ app.get('/video-proxy', async (req, res) => {
         const fileMatch = jwResponse.data.match(/"file"\s*:\s*"([^"]+)"/);
         if (fileMatch) {
           videoUrl = fileMatch[1].replace(/\\\//g, '/');
-          logger.info(`Video proxy: Got fresh URL: ${videoUrl.substring(0, 80)}...`);
+          logger.debug(`Video proxy: Got fresh URL`);
         }
       } catch (err) {
         logger.error(`Video proxy: Failed to get jwplayer auth: ${err.message}`);
@@ -493,7 +495,7 @@ app.get('/video-proxy', async (req, res) => {
     } 
     // If we have an episode ID, fetch the episode page and get jwplayer URL
     else if (episodeId) {
-      logger.info(`Video proxy: Fetching episode ${episodeId}...`);
+      logger.debug(`Video proxy: Fetching episode ${episodeId}...`);
       
       const slug = episodeId.replace(/^hse-/, '');
       const episodeUrl = `https://hentaisea.com/episodes/${slug}/`;
@@ -545,7 +547,7 @@ app.get('/video-proxy', async (req, res) => {
             const fileMatch = jwResponse.data.match(/"file"\s*:\s*"([^"]+)"/);
             if (fileMatch) {
               videoUrl = fileMatch[1].replace(/\\\//g, '/');
-              logger.info(`Video proxy: Got fresh URL from episode: ${videoUrl.substring(0, 80)}...`);
+              logger.debug(`Video proxy: Got fresh URL from episode`);
             }
           }
         }
@@ -560,7 +562,7 @@ app.get('/video-proxy', async (req, res) => {
     }
     
     // Now proxy the actual video
-    logger.info(`Video proxy: Streaming from ${videoUrl.substring(0, 80)}...`);
+    logger.debug(`Video proxy: Streaming video...`);
     
     const videoResponse = await axios({
       method: 'get',
@@ -697,7 +699,7 @@ app.get('/manifest.json', async (req, res) => {
       });
     }
     
-    logger.info(`Serving manifest (${JSON.stringify(manifest).length} bytes)`);
+    logger.debug(`Serving manifest (${JSON.stringify(manifest).length} bytes)`);
     
     // Trigger catalog pre-warming in background when manifest is served (addon install)
     prewarmCatalogsOnManifest();
@@ -789,7 +791,7 @@ app.get('/:config/manifest.json', async (req, res) => {
       });
     }
     
-    logger.info(`Serving configured manifest (${JSON.stringify(manifest).length} bytes)`);
+    logger.debug(`Serving configured manifest (${JSON.stringify(manifest).length} bytes)`);
     
     // Trigger catalog pre-warming in background when manifest is served (addon install)
     prewarmCatalogsOnManifest();
@@ -841,7 +843,7 @@ app.get('/catalog/:type/:id/:extraArgs.json', async (req, res) => {
     // Merge with query params
     Object.assign(extra, req.query);
     
-    logger.info(`Catalog with extra: type=${type}, id=${id}, extraArgs=${extraArgs}, extra=${JSON.stringify(extra)}`);
+    logger.debug(`Catalog with extra: type=${type}, id=${id}`);
     
     const result = await catalogHandler({ type, id, extra, config: userConfig });
     res.json(result);
@@ -855,7 +857,7 @@ app.get('/catalog/:type/:id/:extraArgs.json', async (req, res) => {
 app.get('/:config/catalog/:type/:id.json', async (req, res) => {
   try {
     const configStr = req.params.config;
-    logger.info(`Path-based catalog request: config=${configStr}, type=${req.params.type}, id=${req.params.id}, query=${JSON.stringify(req.query)}`);
+    logger.debug(`Path-based catalog: ${req.params.type}/${req.params.id}`);
     const userConfig = parseConfig(
       Object.fromEntries(new URLSearchParams(configStr).entries())
     );
@@ -878,7 +880,7 @@ app.get('/:config/catalog/:type/:id.json', async (req, res) => {
 app.get('/:config/catalog/:type/:id/:extraArgs.json', async (req, res) => {
   try {
     const configStr = req.params.config;
-    logger.info(`Path-based catalog with extra: config=${configStr}, type=${req.params.type}, id=${req.params.id}, extraArgs=${req.params.extraArgs}`);
+    logger.debug(`Path-based catalog with extra: ${req.params.type}/${req.params.id}`);
     const userConfig = parseConfig(
       Object.fromEntries(new URLSearchParams(configStr).entries())
     );
@@ -897,7 +899,7 @@ app.get('/:config/catalog/:type/:id/:extraArgs.json', async (req, res) => {
     // Merge with query params
     Object.assign(extra, req.query);
     
-    logger.info(`Parsed extra: ${JSON.stringify(extra)}`);
+    logger.debug(`Parsed extra: ${JSON.stringify(extra)}`);
     
     const result = await catalogHandler({ type, id, extra, config: userConfig });
     res.json(result);
