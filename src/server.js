@@ -44,31 +44,30 @@ async function initializeDatabase() {
 }
 
 /**
- * Pre-warm catalogs when manifest is served (addon installed)
+ * Pre-warm catalogs on manifest request
  * 
- * SIMPLIFIED: With pre-bundled database, Top Rated and most content is instant.
- * Only pre-warm "New Releases" to catch content added AFTER the database was built.
- * 
- * Database provides: All historical catalog data (instant load)
- * Pre-warm provides: Fresh content not in database yet
+ * DISABLED when database is ready - all data is pre-bundled.
+ * The database contains all catalog data, so no scraping is needed on startup.
+ * Fresh content is caught by the daily incremental update scheduler.
  */
 async function prewarmCatalogsOnManifest() {
   if (manifestPrewarmTriggered) {
-    logger.debug('Catalog prewarm already triggered, skipping');
     return;
   }
   manifestPrewarmTriggered = true;
   
-  // Check if database is ready - if so, only warm new releases
+  // Check if database is ready - if so, skip ALL prewarming
   const dbReady = databaseLoader.isReady();
   const dbStats = databaseLoader.getStats();
   
   if (dbReady) {
-    logger.info(`📦 Database ready with ${dbStats.totalSeries} series (built: ${dbStats.buildDate || 'unknown'})`);
-    logger.info('🔥 Pre-warming only New Releases (content since database build)...');
-  } else {
-    logger.info('⚠️ No database - pre-warming all catalogs from scrapers...');
+    logger.info(`📦 Database ready with ${dbStats.totalSeries} series - skipping catalog prewarm`);
+    logger.info('   Fresh content is handled by daily incremental updates');
+    return; // Database has all data, no need to scrape anything
   }
+  
+  // Only prewarm if NO database (fallback scraper mode)
+  logger.info('⚠️ No database - pre-warming catalogs from scrapers...');
   
   try {
     // Import scrapers
@@ -77,44 +76,39 @@ async function prewarmCatalogsOnManifest() {
     const hentaitvScraper = require('./scrapers/hentaitv');
     
     const DELAY_MS = 100;
+    const PAGES_TO_PREWARM = 3;
     
-    // WITH DATABASE: Only warm page 1 of new releases (catch fresh content)
-    // WITHOUT DATABASE: Warm 3 pages of everything (full warmup)
-    const PAGES_TO_PREWARM = dbReady ? 1 : 3;
-    
-    // Skip Top Rated warmup if database is ready (data is pre-bundled)
-    if (!dbReady) {
-      logger.debug('Pre-warming Top Rated catalog (no database)...');
-      for (let page = 1; page <= PAGES_TO_PREWARM; page++) {
-        const promises = [
-          cache.prewarm(
-            cache.key('catalog', `hmm-popular-page-${page}`),
-            cache.getTTL('catalog'),
-            () => hentaimamaScraper.getCatalog(page, null, 'popular')
-          ),
-          cache.prewarm(
-            cache.key('catalog', `hse-popular-page-${page}`),
-            cache.getTTL('catalog'),
-            () => hentaiseaScraper.getTrending(page)
-          ),
-          cache.prewarm(
-            cache.key('catalog', `htv-popular-page-${page}`),
-            cache.getTTL('catalog'),
-            () => hentaitvScraper.getCatalog(page, null, 'popular')
-          )
-        ];
-        
-        await Promise.allSettled(promises);
-        logger.debug(`Top Rated page ${page} warmed`);
-        
-        if (page < PAGES_TO_PREWARM) {
-          await new Promise(resolve => setTimeout(resolve, DELAY_MS));
-        }
+    // Warm Top Rated catalog
+    logger.debug('Pre-warming Top Rated catalog...');
+    for (let page = 1; page <= PAGES_TO_PREWARM; page++) {
+      const promises = [
+        cache.prewarm(
+          cache.key('catalog', `hmm-popular-page-${page}`),
+          cache.getTTL('catalog'),
+          () => hentaimamaScraper.getCatalog(page, null, 'popular')
+        ),
+        cache.prewarm(
+          cache.key('catalog', `hse-popular-page-${page}`),
+          cache.getTTL('catalog'),
+          () => hentaiseaScraper.getTrending(page)
+        ),
+        cache.prewarm(
+          cache.key('catalog', `htv-popular-page-${page}`),
+          cache.getTTL('catalog'),
+          () => hentaitvScraper.getCatalog(page, null, 'popular')
+        )
+      ];
+      
+      await Promise.allSettled(promises);
+      logger.debug(`Top Rated page ${page} warmed`);
+      
+      if (page < PAGES_TO_PREWARM) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_MS));
       }
     }
     
-    // Always warm New Releases (catches content since last database build)
-    logger.debug(`Pre-warming New Releases (${PAGES_TO_PREWARM} page(s))...`);
+    // Warm New Releases catalog
+    logger.debug('Pre-warming New Releases...');
     for (let page = 1; page <= PAGES_TO_PREWARM; page++) {
       const promises = [
         cache.prewarm(
@@ -143,7 +137,6 @@ async function prewarmCatalogsOnManifest() {
     }
     
     logger.info('Catalog pre-warming complete');
-    logger.debug(`Cache stats: ${JSON.stringify(cache.getStats())}`);
   } catch (error) {
     logger.warn(`Catalog pre-warm error: ${error.message}`);
   }
