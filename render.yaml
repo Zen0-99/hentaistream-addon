@@ -6,7 +6,8 @@ services:
     region: oregon
     plan: free
     buildCommand: npm install
-    startCommand: npm start
+    # Enable garbage collection exposure for memory management
+    startCommand: node --expose-gc --max-old-space-size=450 src/server.js
     healthCheckPath: /health
     
     envVars:
@@ -16,20 +17,21 @@ services:
       - key: PORT
         value: 10000
       
+      # Reduced cache TTLs for 512MB memory limit
       - key: CACHE_TTL_CATALOG
-        value: 3600
+        value: 1800
       
       - key: CACHE_TTL_META
-        value: 7200
+        value: 3600
       
       - key: CACHE_TTL_STREAM
-        value: 300
+        value: 180
       
       - key: CACHE_TTL_SEARCH
-        value: 900
+        value: 600
       
       - key: CACHE_MAX_ITEMS
-        value: 1000
+        value: 100
       
       - key: USER_AGENT
         value: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36

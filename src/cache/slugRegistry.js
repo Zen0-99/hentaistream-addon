@@ -300,6 +300,16 @@ class SlugRegistry {
     this.cache.clear();
     this.stats = { hits: 0, misses: 0, stores: 0 };
   }
+  
+  /**
+   * Clear just the memory cache (keep stats for debugging)
+   * Used during memory pressure situations
+   */
+  clearMemoryCache() {
+    const sizeBefore = this.cache.size;
+    this.cache.clear();
+    logger.info(`[SlugRegistry] Cleared ${sizeBefore} entries from memory cache`);
+  }
 
   /**
    * Shutdown - save to disk (only if not in database mode)

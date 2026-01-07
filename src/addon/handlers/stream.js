@@ -207,12 +207,38 @@ async function streamHandler(args) {
         return [];
       }
       
-      // ALWAYS poll ALL providers in parallel for maximum stream availability
-      // HentaiTV uses smart slug resolution, others use variation matching
+      /**
+       * Wrap a promise with a timeout to prevent memory buildup from slow requests
+       */
+      function withTimeout(promise, ms, name) {
+        return Promise.race([
+          promise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error(`${name} timeout after ${ms}ms`)), ms)
+          )
+        ]);
+      }
+      
+      // Poll ALL providers in parallel with timeout (15s max per provider)
+      // This prevents slow providers from causing memory buildup
+      const PROVIDER_TIMEOUT = 15000;
+      
       const [hmmResult, hseResult, htvResult] = await Promise.allSettled([
-        tryProviderWithVariations(hentaimamaScraper, 'HentaiMama', slugVariations),
-        tryProviderWithVariations(hentaiseaScraper, 'HentaiSea', slugVariations),
-        tryHentaiTV(cleanSlug.replace(/-episode-\d+$/, ''), episodeNum)
+        withTimeout(
+          tryProviderWithVariations(hentaimamaScraper, 'HentaiMama', slugVariations),
+          PROVIDER_TIMEOUT,
+          'HentaiMama'
+        ),
+        withTimeout(
+          tryProviderWithVariations(hentaiseaScraper, 'HentaiSea', slugVariations),
+          PROVIDER_TIMEOUT,
+          'HentaiSea'
+        ),
+        withTimeout(
+          tryHentaiTV(cleanSlug.replace(/-episode-\d+$/, ''), episodeNum),
+          PROVIDER_TIMEOUT,
+          'HentaiTV'
+        )
       ]);
       
       // Collect all successful streams

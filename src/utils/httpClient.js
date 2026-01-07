@@ -7,6 +7,8 @@
  * - Batch URL fetching via Cloudflare Worker
  * - Automatic keep-alive and connection reuse
  * - DNS pre-resolution
+ * 
+ * MEMORY OPTIMIZATION: Reduced connection pools for 512MB limit
  */
 
 const { Pool, Agent, setGlobalDispatcher } = require('undici');
@@ -27,12 +29,12 @@ function getRandomUserAgent() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
-// Global agent with optimized settings
+// Global agent with REDUCED settings for 512MB memory limit
 const globalAgent = new Agent({
-  keepAliveTimeout: 30000,      // Keep connections alive for 30s
-  keepAliveMaxTimeout: 60000,   // Max keep-alive 60s
-  pipelining: 6,                // HTTP pipelining depth
-  connections: 50,              // Max connections per origin
+  keepAliveTimeout: 15000,      // Reduced: Keep connections alive for 15s (was 30s)
+  keepAliveMaxTimeout: 30000,   // Reduced: Max keep-alive 30s (was 60s)
+  pipelining: 4,                // Reduced: HTTP pipelining depth (was 6)
+  connections: 20,              // Reduced: Max connections per origin (was 50)
   connect: {
     timeout: 10000,             // Connection timeout 10s
     rejectUnauthorized: true,
@@ -42,32 +44,50 @@ const globalAgent = new Agent({
 // Set as global dispatcher for all undici requests
 setGlobalDispatcher(globalAgent);
 
-// Connection pools per domain for maximum reuse
+// Connection pools per domain for maximum reuse - with size limit
 const pools = new Map();
+const MAX_POOLS = 5; // Limit total pools to prevent memory buildup
 
 function getPool(origin) {
   if (!pools.has(origin)) {
+    // Cleanup old pools if we hit the limit
+    if (pools.size >= MAX_POOLS) {
+      const oldestKey = pools.keys().next().value;
+      const oldPool = pools.get(oldestKey);
+      oldPool.close().catch(() => {});
+      pools.delete(oldestKey);
+      logger.debug(`[HttpClient] Closed old pool for ${oldestKey} (limit reached)`);
+    }
+    
     pools.set(origin, new Pool(origin, {
-      connections: 20,           // Max parallel connections to this origin
-      pipelining: 6,             // HTTP pipelining depth
-      keepAliveTimeout: 30000,
-      keepAliveMaxTimeout: 60000,
+      connections: 10,           // Reduced: Max parallel connections (was 20)
+      pipelining: 4,             // Reduced: HTTP pipelining depth (was 6)
+      keepAliveTimeout: 15000,   // Reduced
+      keepAliveMaxTimeout: 30000,
     }));
-    logger.debug(`[HttpClient] Created connection pool for ${origin}`);
+    logger.debug(`[HttpClient] Created connection pool for ${origin} (${pools.size}/${MAX_POOLS})`);
   }
   return pools.get(origin);
 }
 
-// Concurrency limiters
+// Concurrency limiters - reduced for memory
 const limiters = {
-  default: pLimit(15),          // General concurrency limit
-  cfProxy: pLimit(25),          // Higher limit for CF Worker (it handles parallelism)
+  default: pLimit(8),           // Reduced: General concurrency (was 15)
+  cfProxy: pLimit(15),          // Reduced: CF Worker limit (was 25)
   perHost: new Map(),           // Per-host limiters
 };
 
+// Limit per-host limiter count
+const MAX_HOST_LIMITERS = 10;
+
 function getHostLimiter(host) {
   if (!limiters.perHost.has(host)) {
-    limiters.perHost.set(host, pLimit(10)); // 10 concurrent per host
+    // Cleanup if too many
+    if (limiters.perHost.size >= MAX_HOST_LIMITERS) {
+      const oldestKey = limiters.perHost.keys().next().value;
+      limiters.perHost.delete(oldestKey);
+    }
+    limiters.perHost.set(host, pLimit(5)); // Reduced: 5 concurrent per host (was 10)
   }
   return limiters.perHost.get(host);
 }

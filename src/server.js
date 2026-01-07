@@ -148,9 +148,53 @@ const app = express();
 // === MEMORY PROTECTION: Concurrent Request Limiting ===
 // Prevents memory spikes from too many parallel requests (512MB limit on free tier)
 const activeRequests = new Map(); // Track concurrent requests per IP
-const MAX_CONCURRENT_PER_IP = 3; // Max concurrent requests per IP
-const MAX_TOTAL_CONCURRENT = 10; // Max total concurrent requests
+const MAX_CONCURRENT_PER_IP = 2; // Reduced: Max concurrent requests per IP (was 3)
+const MAX_TOTAL_CONCURRENT = 6; // Reduced: Max total concurrent requests (was 10)
 let totalActiveRequests = 0;
+
+// === MEMORY MONITORING ===
+// Track memory usage and trigger GC when needed
+let lastMemoryCheck = Date.now();
+const MEMORY_CHECK_INTERVAL = 30000; // Check every 30 seconds
+const MEMORY_WARNING_MB = 400; // Warn at 400MB
+const MEMORY_CRITICAL_MB = 480; // Force GC at 480MB
+
+function checkMemoryUsage() {
+  const now = Date.now();
+  if (now - lastMemoryCheck < MEMORY_CHECK_INTERVAL) return;
+  lastMemoryCheck = now;
+  
+  const used = process.memoryUsage();
+  const heapMB = Math.round(used.heapUsed / 1024 / 1024);
+  const rssMB = Math.round(used.rss / 1024 / 1024);
+  
+  if (rssMB >= MEMORY_CRITICAL_MB) {
+    logger.warn(`⚠️ CRITICAL MEMORY: ${rssMB}MB RSS, ${heapMB}MB heap - forcing cleanup`);
+    // Clear caches to free memory
+    cache.flush();
+    slugRegistry.clearMemoryCache && slugRegistry.clearMemoryCache();
+    // Suggest garbage collection (only works with --expose-gc flag)
+    if (global.gc) {
+      global.gc();
+      logger.info('Forced garbage collection');
+    }
+  } else if (rssMB >= MEMORY_WARNING_MB) {
+    logger.warn(`⚠️ High memory: ${rssMB}MB RSS, ${heapMB}MB heap`);
+  }
+}
+
+// Periodic memory check
+setInterval(() => {
+  const used = process.memoryUsage();
+  const heapMB = Math.round(used.heapUsed / 1024 / 1024);
+  const rssMB = Math.round(used.rss / 1024 / 1024);
+  
+  if (rssMB >= MEMORY_CRITICAL_MB) {
+    logger.warn(`⚠️ CRITICAL MEMORY: ${rssMB}MB RSS - clearing caches`);
+    cache.flush();
+    slugRegistry.clearMemoryCache && slugRegistry.clearMemoryCache();
+  }
+}, 60000); // Check every minute
 
 function getClientIP(req) {
   return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
@@ -193,6 +237,9 @@ app.use((req, res, next) => {
       activeRequests.set(ip, count - 1);
     }
     totalActiveRequests = Math.max(0, totalActiveRequests - 1);
+    
+    // Check memory after request completes
+    checkMemoryUsage();
   });
   
   // Also clean up on connection close (client disconnect)
@@ -245,6 +292,51 @@ app.get('/health', (req, res) => {
   };
 
   res.json(health);
+});
+
+// Memory stats endpoint for monitoring
+app.get('/admin/memory', (req, res) => {
+  const mem = process.memoryUsage();
+  res.json({
+    memory: {
+      heapUsed: Math.round(mem.heapUsed / 1024 / 1024) + 'MB',
+      heapTotal: Math.round(mem.heapTotal / 1024 / 1024) + 'MB',
+      rss: Math.round(mem.rss / 1024 / 1024) + 'MB',
+      external: Math.round(mem.external / 1024 / 1024) + 'MB',
+      limit: '512MB'
+    },
+    cache: cache.getStats(),
+    slugRegistry: slugRegistry.getStats(),
+    activeRequests: {
+      total: totalActiveRequests,
+      maxTotal: MAX_TOTAL_CONCURRENT,
+      perIPCount: activeRequests.size
+    },
+    uptime: Math.round(process.uptime()) + 's'
+  });
+});
+
+// Force memory cleanup endpoint
+app.post('/admin/memory/gc', async (req, res) => {
+  const beforeMem = process.memoryUsage();
+  
+  // Clear caches
+  await cache.flushAll();
+  slugRegistry.clearMemoryCache();
+  
+  // Force GC if available
+  if (global.gc) {
+    global.gc();
+  }
+  
+  const afterMem = process.memoryUsage();
+  
+  res.json({
+    success: true,
+    before: Math.round(beforeMem.rss / 1024 / 1024) + 'MB',
+    after: Math.round(afterMem.rss / 1024 / 1024) + 'MB',
+    freed: Math.round((beforeMem.rss - afterMem.rss) / 1024 / 1024) + 'MB'
+  });
 });
 
 // Self-ping mechanism to keep Render instance alive

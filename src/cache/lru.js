@@ -4,8 +4,8 @@ const logger = require('../utils/logger');
 class LRUCacheWrapper {
   constructor(options = {}) {
     this.cache = new LRUCache({
-      max: options.max || 150, // Reduced from 500 to limit memory usage (512MB limit)
-      maxSize: options.maxSize || 40 * 1024 * 1024, // 40MB total memory limit
+      max: options.max || 100, // Further reduced for 512MB limit - streams are short-lived anyway
+      maxSize: options.maxSize || 20 * 1024 * 1024, // 20MB total memory limit (was 40MB)
       sizeCalculation: (value) => {
         try {
           // Estimate memory size of cached value
@@ -14,12 +14,16 @@ class LRUCacheWrapper {
           return 1024; // 1KB fallback for non-serializable objects
         }
       },
-      ttl: options.ttl || 1000 * 60 * 60, // Default 1 hour
+      ttl: options.ttl || 1000 * 60 * 30, // 30 minutes default (was 1 hour) - streams expire faster
       updateAgeOnGet: true,
       updateAgeOnHas: false,
+      // Aggressively dispose of old entries
+      disposeAfter: (value, key) => {
+        logger.debug(`[LRU] Disposed: ${key}`);
+      }
     });
 
-    logger.info('LRU cache initialized');
+    logger.info('LRU cache initialized (20MB limit, 100 max entries)');
   }
 
   get(key) {

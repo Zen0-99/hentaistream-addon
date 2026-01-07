@@ -17,12 +17,12 @@ module.exports = {
   },
   
   cache: {
-    maxItems: parseInt(process.env.CACHE_MAX_ITEMS) || 500,
+    maxItems: parseInt(process.env.CACHE_MAX_ITEMS) || 100, // Reduced for 512MB limit
     ttl: {
-      catalog: parseInt(process.env.CACHE_TTL_CATALOG) || 3600,
-      meta: parseInt(process.env.CACHE_TTL_META) || 7200,
-      stream: parseInt(process.env.CACHE_TTL_STREAM) || 300,
-      search: parseInt(process.env.CACHE_TTL_SEARCH) || 900,
+      catalog: parseInt(process.env.CACHE_TTL_CATALOG) || 1800, // 30 min (was 1h) - database has data anyway
+      meta: parseInt(process.env.CACHE_TTL_META) || 3600, // 1h (was 2h) - database has data anyway
+      stream: parseInt(process.env.CACHE_TTL_STREAM) || 180, // 3 min (was 5 min) - streams expire quickly
+      search: parseInt(process.env.CACHE_TTL_SEARCH) || 600, // 10 min (was 15 min)
     },
   },
   
