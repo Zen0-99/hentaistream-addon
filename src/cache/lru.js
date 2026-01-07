@@ -4,7 +4,16 @@ const logger = require('../utils/logger');
 class LRUCacheWrapper {
   constructor(options = {}) {
     this.cache = new LRUCache({
-      max: options.max || 500, // Maximum number of items
+      max: options.max || 150, // Reduced from 500 to limit memory usage (512MB limit)
+      maxSize: options.maxSize || 40 * 1024 * 1024, // 40MB total memory limit
+      sizeCalculation: (value) => {
+        try {
+          // Estimate memory size of cached value
+          return JSON.stringify(value).length;
+        } catch {
+          return 1024; // 1KB fallback for non-serializable objects
+        }
+      },
       ttl: options.ttl || 1000 * 60 * 60, // Default 1 hour
       updateAgeOnGet: true,
       updateAgeOnHas: false,

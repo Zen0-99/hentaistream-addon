@@ -145,6 +145,72 @@ async function prewarmCatalogsOnManifest() {
 // Create Express app
 const app = express();
 
+// === MEMORY PROTECTION: Concurrent Request Limiting ===
+// Prevents memory spikes from too many parallel requests (512MB limit on free tier)
+const activeRequests = new Map(); // Track concurrent requests per IP
+const MAX_CONCURRENT_PER_IP = 3; // Max concurrent requests per IP
+const MAX_TOTAL_CONCURRENT = 10; // Max total concurrent requests
+let totalActiveRequests = 0;
+
+function getClientIP(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+         req.ip || 
+         req.connection?.remoteAddress || 
+         'unknown';
+}
+
+app.use((req, res, next) => {
+  // Skip rate limiting for simple endpoints
+  if (req.path === '/health' || req.path === '/manifest.json' || req.path.startsWith('/public')) {
+    return next();
+  }
+  
+  const ip = getClientIP(req);
+  const currentForIP = activeRequests.get(ip) || 0;
+  
+  // Check total concurrent requests
+  if (totalActiveRequests >= MAX_TOTAL_CONCURRENT) {
+    logger.warn(`[RateLimit] Server busy: ${totalActiveRequests}/${MAX_TOTAL_CONCURRENT} requests`);
+    return res.status(503).json({ error: 'Server busy. Please retry in a moment.' });
+  }
+  
+  // Check per-IP concurrent requests
+  if (currentForIP >= MAX_CONCURRENT_PER_IP) {
+    logger.warn(`[RateLimit] Too many requests from ${ip}: ${currentForIP}/${MAX_CONCURRENT_PER_IP}`);
+    return res.status(429).json({ error: 'Too many concurrent requests. Please wait.' });
+  }
+  
+  // Track this request
+  activeRequests.set(ip, currentForIP + 1);
+  totalActiveRequests++;
+  
+  // Clean up on response finish
+  res.on('finish', () => {
+    const count = activeRequests.get(ip) || 0;
+    if (count <= 1) {
+      activeRequests.delete(ip);
+    } else {
+      activeRequests.set(ip, count - 1);
+    }
+    totalActiveRequests = Math.max(0, totalActiveRequests - 1);
+  });
+  
+  // Also clean up on connection close (client disconnect)
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      const count = activeRequests.get(ip) || 0;
+      if (count <= 1) {
+        activeRequests.delete(ip);
+      } else {
+        activeRequests.set(ip, count - 1);
+      }
+      totalActiveRequests = Math.max(0, totalActiveRequests - 1);
+    }
+  });
+  
+  next();
+});
+
 // Middleware
 app.use(express.json());
 
