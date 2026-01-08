@@ -1,0 +1,48 @@
+# HentaiStream Edge Addon - Wrangler Configuration
+# 
+# This deploys the fully-scalable edge version of HentaiStream
+# that can handle unlimited users without RAM concerns.
+#
+# Setup:
+# 1. Install wrangler: npm install -g wrangler
+# 2. Login: wrangler login
+# 3. Create KV namespace: wrangler kv:namespace create "CATALOG_DB"
+# 4. Update the namespace ID below
+# 5. Upload database: node scripts/upload-to-kv.js
+# 6. Deploy: wrangler deploy
+
+name = "hentaistream-addon"
+main = "cloudflare-workers/addon-edge.js"
+compatibility_date = "2024-01-01"
+
+# Workers Free tier: 100,000 requests/day
+# Each request is isolated - no memory pressure!
+
+[vars]
+# Scraper worker URLs (update with your worker URLs)
+HENTAIMAMA_WORKER = "https://hentaimama.kkeypop3750.workers.dev"
+HENTAISEA_WORKER = "https://hentaisea.kkeypop3750.workers.dev"
+HENTAITV_WORKER = "https://hentaitv.kkeypop3750.workers.dev"
+
+# KV Namespace for catalog database
+# Create with: wrangler kv:namespace create "CATALOG_DB"
+# Then replace the ID below
+[[kv_namespaces]]
+binding = "CATALOG_DB"
+id = "YOUR_NAMESPACE_ID_HERE"  # Replace with actual namespace ID
+
+# Preview namespace (for wrangler dev)
+# Create with: wrangler kv:namespace create "CATALOG_DB" --preview
+# [[kv_namespaces]]
+# binding = "CATALOG_DB"
+# preview_id = "YOUR_PREVIEW_NAMESPACE_ID_HERE"
+
+# Custom domain (optional)
+# [routes]
+# routes = [
+#   { pattern = "hentaistream.example.com/*", zone_name = "example.com" }
+# ]
+
+# Cron triggers for scheduled updates (optional)
+# [triggers]
+# crons = ["0 0 * * *"]  # Daily at midnight UTC

@@ -66,11 +66,65 @@ The addon pulls content from multiple sources and combines them into one easy-to
    - Paste this URL: `http://localhost:7000/manifest.json`
    - Click Install
 
-### Option 2: Deploy to Cloud (Recommended)
+### Option 2: Deploy to Cloudflare Workers (Recommended - Infinite Scaling)
 
-You can deploy this addon to free hosting platforms so it's always available:
+**Best for production** - Handles unlimited users with zero RAM concerns!
 
-#### Deploy to Render.com (Free)
+The edge architecture runs entirely on Cloudflare Workers with the database in KV storage. Each request is isolated, so there's no memory pressure from concurrent users.
+
+#### Prerequisites
+```bash
+npm install -g wrangler
+wrangler login
+```
+
+#### Setup Steps
+
+1. **Create KV Namespace for the database**
+   ```bash
+   wrangler kv:namespace create "CATALOG_DB"
+   ```
+   Copy the namespace ID shown in the output.
+
+2. **Update wrangler.toml**
+   Edit `wrangler.toml` and replace `YOUR_NAMESPACE_ID_HERE` with your actual namespace ID.
+
+3. **Upload the database to KV**
+   ```bash
+   # Set your namespace ID
+   export KV_NAMESPACE_ID="your-namespace-id"
+   
+   # Upload the catalog (one-time, then after each database rebuild)
+   node scripts/upload-to-kv.js
+   ```
+
+4. **Deploy the edge worker**
+   ```bash
+   wrangler deploy
+   ```
+
+5. **Deploy the scraper workers** (for stream resolution)
+   ```bash
+   # Deploy each scraper worker
+   wrangler deploy cloudflare-workers/scraper-hentaimama.js --name hentaimama
+   wrangler deploy cloudflare-workers/scraper-hentaisea.js --name hentaisea  
+   wrangler deploy cloudflare-workers/scraper-hentaitv.js --name hentaitv
+   ```
+
+6. **Add to Stremio**
+   Your addon URL will be: `https://hentaistream-addon.YOUR_SUBDOMAIN.workers.dev/manifest.json`
+
+#### Why Cloudflare Workers?
+- **100,000 free requests/day** - enough for 1000+ users
+- **No RAM limits** - each request is isolated
+- **Global edge network** - fast responses worldwide
+- **KV reads are FREE** - unlimited database reads
+- **Zero server management** - no crashes, no restarts
+
+### Option 3: Deploy to Render.com (Legacy - Limited)
+
+> ⚠️ **Note**: Render's 512MB free tier can only handle ~50-100 concurrent users. For larger audiences, use Cloudflare Workers above.
+
 1. Fork this repository to your GitHub
 2. Sign up at [Render.com](https://render.com/)
 3. Create a new Web Service
@@ -160,19 +214,45 @@ By default, the server runs on port 7000. To change it:
 
 ##  Project Structure
 
-`
+```
 hentaistream-addon/
- src/
-    server.js           # Main server entry point
-    addon/              # Stremio addon logic
-    scrapers/           # Content scrapers (HentaiMama, HentaiTV, HentaiSea)
-    cache/              # Caching system
-    utils/              # Helper functions
- docker/                 # Docker configuration
- public/                 # Static files
- package.json            # Dependencies
- render.yaml            # Cloud deployment config
-`
+├── src/
+│   ├── server.js           # Main server entry point (legacy/Render)
+│   ├── addon/              # Stremio addon logic
+│   ├── scrapers/           # Content scrapers (HentaiMama, HentaiTV, HentaiSea)
+│   ├── cache/              # Caching system
+│   └── utils/              # Helper functions
+├── cloudflare-workers/
+│   ├── addon-edge.js       # 🆕 Main edge addon (handles ALL requests)
+│   ├── scraper-hentaimama.js  # Stream scraper worker
+│   ├── scraper-hentaisea.js   # Stream scraper worker
+│   └── scraper-hentaitv.js    # Stream scraper worker
+├── scripts/
+│   ├── build-database.js   # Build full catalog database
+│   ├── update-database.js  # Incremental daily updates
+│   └── upload-to-kv.js     # 🆕 Upload database to Cloudflare KV
+├── data/
+│   ├── catalog.json.gz     # Pre-bundled database (4000+ series)
+│   └── filter-options.json # Genre/studio options
+├── docker/                 # Docker configuration
+├── public/                 # Static files
+├── wrangler.toml           # 🆕 Cloudflare Workers config
+├── package.json            # Dependencies
+└── render.yaml             # Cloud deployment config (legacy)
+```
+
+### Architecture Modes
+
+**Edge Mode (Recommended)** - Cloudflare Workers + KV
+- Handles unlimited concurrent users
+- Database stored in KV (free reads)
+- Each request isolated (no memory pressure)
+- Global edge network for fast responses
+
+**Server Mode (Legacy)** - Node.js on Render/Heroku
+- Limited by RAM (512MB = ~100 users)
+- Database loaded in memory
+- Good for development/testing
 
 ---
 
