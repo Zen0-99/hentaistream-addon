@@ -50,7 +50,7 @@ jobs:
           fi
         env:
           NODE_ENV: production
-          CF_PROXY_URL: https://hentaistream-addon.kkeypop3750.workers.dev
+          # CF_PROXY_URL not needed - GitHub Actions IPs are not blocked by Cloudflare
       
       - name: Run full database build
         if: github.event.inputs.update_type == 'full'
@@ -63,7 +63,7 @@ jobs:
           fi
         env:
           NODE_ENV: production
-          CF_PROXY_URL: https://hentaistream-addon.kkeypop3750.workers.dev
+          # CF_PROXY_URL not needed - GitHub Actions IPs are not blocked by Cloudflare
       
       - name: Check for changes
         id: check_changes

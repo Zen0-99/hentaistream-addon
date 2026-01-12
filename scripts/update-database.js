@@ -869,35 +869,23 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
       
       // Provider-specific catalog fetching
       if (isHentaiMama) {
-        // HentaiMama: Use getCatalog with 'recent' sort to get newest content
-        // This is more reliable than getMonthlyReleases which parses a different page
-        const catalogResult = await withRetry(() => hentaimamaScraper.getCatalog(page, null, 'recent'));
-        const catalogItems = Array.isArray(catalogResult) ? catalogResult : (catalogResult?.items || catalogResult?.metas || []);
-        
-        // DEBUG: Log how many items were returned
-        logger.debug(`[DEBUG] hentaimama: getCatalog returned ${catalogItems.length} items`);
-        if (catalogItems.length === 0) {
-          logger.info(`  ⚠️ HentaiMama returned 0 items - may be blocked or proxy issue`);
+        // HentaiMama: Use new-monthly-hentai page which shows individual episodes
+        // This allows detecting both new series AND new episodes of existing series
+        let monthlyEpisodes = [];
+        try {
+          monthlyEpisodes = await withRetry(() => hentaimamaScraper.getMonthlyReleases(page));
+        } catch (error) {
+          logger.error(`  ❌ HentaiMama getMonthlyReleases failed: ${error.message}`);
         }
         
-        // Process catalog items to check for new content
-        for (const item of catalogItems) {
-          const existing = findExistingEntry(item, existingCatalog, normalizedIndex);
-          
-          if (existing) {
-            consecutiveExisting++;
-            logger.debug(`  ↩️ Existing: "${item.name}" (${consecutiveExisting} consecutive)`);
-          } else {
-            consecutiveExisting = 0;
-            newItems.push(item);
-            logger.debug(`  ✨ New: "${item.name}"`);
-          }
+        // DEBUG: Log how many episodes were returned
+        logger.info(`[DEBUG] hentaimama: getMonthlyReleases returned ${monthlyEpisodes.length} episodes`);
+        if (monthlyEpisodes.length === 0) {
+          logger.info(`  ⚠️ HentaiMama returned 0 episodes - may be blocked or page structure changed`);
+          // HentaiMama done - nothing to process
+          break;
         }
         
-        // HentaiMama is done after first page
-        break;
-        
-        /* OLD CODE - getMonthlyReleases was unreliable
         // Group episodes by series to detect new series vs new episodes
         const seriesMap = new Map();
         for (const ep of monthlyEpisodes) {
@@ -967,7 +955,6 @@ async function scanProvider(scraper, providerName, existingCatalog, normalizedIn
         
         // HentaiMama is done after processing monthly releases
         break;
-        END OF OLD CODE */
         
       } else if (providerName === 'hentaitv') {
         // HentaiTV: Use search page for newest content
