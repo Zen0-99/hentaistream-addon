@@ -50,6 +50,7 @@ jobs:
           fi
         env:
           NODE_ENV: production
+          CF_PROXY_URL: https://hentaistream-addon.kkeypop3750.workers.dev
       
       - name: Run full database build
         if: github.event.inputs.update_type == 'full'
@@ -62,6 +63,7 @@ jobs:
           fi
         env:
           NODE_ENV: production
+          CF_PROXY_URL: https://hentaistream-addon.kkeypop3750.workers.dev
       
       - name: Check for changes
         id: check_changes
