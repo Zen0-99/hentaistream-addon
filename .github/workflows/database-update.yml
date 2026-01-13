@@ -30,7 +30,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -50,7 +50,7 @@ jobs:
           fi
         env:
           NODE_ENV: production
-          # CF_PROXY_URL not needed - GitHub Actions IPs are not blocked by Cloudflare
+          CF_PROXY_URL: https://hentaistream-addon.kkeypop3750.workers.dev/api/proxy
       
       - name: Run full database build
         if: github.event.inputs.update_type == 'full'
@@ -63,7 +63,7 @@ jobs:
           fi
         env:
           NODE_ENV: production
-          # CF_PROXY_URL not needed - GitHub Actions IPs are not blocked by Cloudflare
+          CF_PROXY_URL: https://hentaistream-addon.kkeypop3750.workers.dev/api/proxy
       
       - name: Check for changes
         id: check_changes

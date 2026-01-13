@@ -134,6 +134,16 @@ export default {
         return await handleApiOptions();
       }
       
+      // Proxy endpoint for incremental database updates (GitHub Actions)
+      // Usage: /api/proxy?url=https://hentaimama.io/new-monthly-hentai/
+      if (cleanPath === '/api/proxy') {
+        const targetUrl = url.searchParams.get('url');
+        if (!targetUrl) {
+          return jsonResponse({ error: 'Missing url parameter' }, 400);
+        }
+        return await handleProxy(targetUrl);
+      }
+      
       // Debug endpoint to test genre matching
       if (cleanPath === '/api/debug/genre') {
         const genre = url.searchParams.get('genre') || '3D';
@@ -1129,6 +1139,51 @@ function formatFullMeta(series) {
 
 function getRandomUserAgent() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
+/**
+ * Proxy handler for incremental database updates
+ * Fetches external URLs through Cloudflare to bypass blocks
+ */
+async function handleProxy(targetUrl) {
+  try {
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': getRandomUserAgent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      },
+      cf: {
+        cacheTtl: 60, // Cache for 1 minute
+        cacheEverything: true
+      }
+    });
+    
+    if (!response.ok) {
+      return new Response(JSON.stringify({ error: `HTTP ${response.status}` }), {
+        status: response.status,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json', 'X-Proxied-Status': response.status.toString() }
+      });
+    }
+    
+    const body = await response.text();
+    
+    return new Response(body, {
+      status: 200,
+      headers: {
+        ...CORS_HEADERS,
+        'Content-Type': response.headers.get('Content-Type') || 'text/html',
+        'X-Proxied-Status': '200'
+      }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+    });
+  }
 }
 
 function jsonResponse(data, status = 200) {
