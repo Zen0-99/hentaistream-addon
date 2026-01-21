@@ -1,0 +1,7 @@
+name = "hentaistream-addon"
+main = "addon-standalone.js"
+compatibility_date = "2024-01-01"
+# account_id configured via wrangler login (same account as animestream-addon)
+
+[vars]
+ENVIRONMENT = "production"

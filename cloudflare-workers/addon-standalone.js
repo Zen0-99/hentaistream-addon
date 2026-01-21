@@ -194,7 +194,18 @@ export default {
       }
       
       if (cleanPath.startsWith('/stream/')) {
-        return await handleStream(cleanPath);
+        return await handleStream(cleanPath, url.origin);
+      }
+      
+      // Video proxy endpoint for HentaiSea (IP-restricted videos)
+      // This fetches fresh auth and proxies the video so users can play it
+      if (cleanPath === '/video-proxy') {
+        const jwplayerUrl = url.searchParams.get('jwplayer');
+        const episodeSlug = url.searchParams.get('episode');
+        if (!jwplayerUrl && !episodeSlug) {
+          return new Response('Missing jwplayer or episode parameter', { status: 400, headers: CORS_HEADERS });
+        }
+        return await handleVideoProxy(request, jwplayerUrl, episodeSlug);
       }
       
       return new Response('Not Found', { status: 404, headers: CORS_HEADERS });
@@ -506,7 +517,7 @@ async function handleMeta(path) {
 // STREAM HANDLER - INLINE SCRAPERS
 // ============================================================================
 
-async function handleStream(path) {
+async function handleStream(path, workerOrigin = '') {
   const match = path.match(/\/stream\/([^/]+)\/([^/]+)\.json/);
   if (!match) {
     return jsonResponse({ streams: [] });
@@ -518,7 +529,7 @@ async function handleStream(path) {
   if (id.startsWith('hmm-')) {
     return await getHentaiMamaStreams(id);
   } else if (id.startsWith('hse-')) {
-    return await getHentaiSeaStreams(id);
+    return await getHentaiSeaStreams(id, workerOrigin);
   } else if (id.startsWith('htv-')) {
     return await getHentaiTVStreams(id);
   }
@@ -662,7 +673,7 @@ async function getHentaiMamaStreams(episodeId) {
 // HENTAISEA SCRAPER
 // ============================================================================
 
-async function getHentaiSeaStreams(episodeId) {
+async function getHentaiSeaStreams(episodeId, workerOrigin = '') {
   try {
     const episodeSlug = episodeId.replace('hse-', '');
     const pageUrl = `https://hentaisea.com/episodes/${episodeSlug}/`;
@@ -715,7 +726,7 @@ async function getHentaiSeaStreams(episodeId) {
         if (ajaxResponse.ok) {
           const responseText = await ajaxResponse.text();
           
-          // Try to get jwplayer URL
+          // Try to get jwplayer URL - we'll use this for the proxy
           const iframeSrcMatch = responseText.match(/src=['"]([^'"]+jwplayer[^'"]+)['"]/);
           if (iframeSrcMatch) {
             let jwplayerUrl = iframeSrcMatch[1];
@@ -723,54 +734,17 @@ async function getHentaiSeaStreams(episodeId) {
               jwplayerUrl = 'https:' + jwplayerUrl;
             }
             
-            console.log(`[HentaiSea] Found jwplayer URL`);
+            console.log(`[HentaiSea] Found jwplayer URL - using proxy`);
             
-            // Fetch jwplayer page
-            const jwResponse = await fetch(jwplayerUrl, {
-              headers: {
-                'User-Agent': getRandomUserAgent(),
-                'Referer': pageUrl
-              }
+            // IMPORTANT: Return a proxy URL instead of direct video URL
+            // This ensures users can play the video (HentaiSea videos are IP-restricted)
+            const proxyUrl = `${workerOrigin}/video-proxy?jwplayer=${encodeURIComponent(jwplayerUrl)}`;
+            
+            streams.push({
+              url: proxyUrl,
+              title: 'HentaiSea MP4',
+              isProxied: true
             });
-            
-            if (jwResponse.ok) {
-              const jwHtml = await jwResponse.text();
-              const sourceMatch = jwHtml.match(/source=([^&'"]+)/);
-              if (sourceMatch) {
-                const videoUrl = decodeURIComponent(sourceMatch[1]);
-                if (videoUrl.includes('.mp4') || videoUrl.includes('.m3u8')) {
-                  streams.push({
-                    url: videoUrl,
-                    title: 'HentaiSea MP4'
-                  });
-                }
-              }
-              
-              // Fallback: look for file pattern
-              if (streams.length === 0) {
-                const fileMatch = jwHtml.match(/file["']?\s*[:=]\s*["']([^"']+\.(mp4|m3u8)[^"']*)/i);
-                if (fileMatch) {
-                  streams.push({
-                    url: fileMatch[1],
-                    title: 'HentaiSea MP4'
-                  });
-                }
-              }
-            }
-          }
-          
-          // Fallback: direct source extraction
-          if (streams.length === 0) {
-            const sourceMatch = responseText.match(/source=([^&'"]+)/);
-            if (sourceMatch) {
-              const videoUrl = decodeURIComponent(sourceMatch[1]);
-              if (videoUrl.includes('.mp4') || videoUrl.includes('.m3u8')) {
-                streams.push({
-                  url: videoUrl,
-                  title: 'HentaiSea MP4'
-                });
-              }
-            }
           }
         }
       } catch (ajaxErr) {
@@ -778,20 +752,25 @@ async function getHentaiSeaStreams(episodeId) {
       }
     }
     
-    // Fallback: direct video sources
+    // Fallback: Use episode-based proxy URL if no jwplayer found
     if (streams.length === 0) {
-      const sources = extractVideoSources(html);
-      streams.push(...sources.map(s => ({ url: s.file, title: 'HentaiSea MP4' })));
+      console.log(`[HentaiSea] No jwplayer found, using episode-based proxy`);
+      const proxyUrl = `${workerOrigin}/video-proxy?episode=${encodeURIComponent(episodeSlug)}`;
+      streams.push({
+        url: proxyUrl,
+        title: 'HentaiSea MP4',
+        isProxied: true
+      });
     }
     
     const formattedStreams = streams.map(s => ({
       name: 'HentaiSea',
       title: s.title || 'HD',
       url: s.url,
-      behaviorHints: { notWebReady: s.url?.includes('.m3u8') || false }
+      behaviorHints: { notWebReady: false }
     }));
     
-    console.log(`[HentaiSea] Found ${formattedStreams.length} streams`);
+    console.log(`[HentaiSea] Found ${formattedStreams.length} streams (proxied)`);
     
     return jsonResponse({ streams: formattedStreams });
     
@@ -1139,6 +1118,193 @@ function formatFullMeta(series) {
 
 function getRandomUserAgent() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
+// ============================================================================
+// VIDEO PROXY HANDLER - HentaiSea IP-restricted videos
+// ============================================================================
+
+/**
+ * Video proxy for HentaiSea streams
+ * 
+ * HentaiSea videos are IP-restricted - the authentication tokens are tied to
+ * the IP address that requested them. This proxy:
+ * 1. Fetches fresh authentication from HentaiSea
+ * 2. Streams the video through the worker so users can play it
+ * 
+ * @param {Request} request - Incoming request (for Range header support)
+ * @param {string} jwplayerUrl - JWPlayer URL to extract video from
+ * @param {string} episodeSlug - Episode slug as fallback
+ */
+async function handleVideoProxy(request, jwplayerUrl, episodeSlug) {
+  try {
+    let videoUrl = null;
+    
+    // Method 1: Extract video URL from jwplayer URL
+    if (jwplayerUrl) {
+      console.log(`[VideoProxy] Fetching fresh auth from jwplayer...`);
+      
+      try {
+        const jwResponse = await fetch(jwplayerUrl, {
+          headers: {
+            'User-Agent': getRandomUserAgent(),
+            'Referer': 'https://hentaisea.com/',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          }
+        });
+        
+        if (jwResponse.ok) {
+          const jwHtml = await jwResponse.text();
+          
+          // Method 1a: Look for file pattern in JWPlayer config
+          const fileMatch = jwHtml.match(/"file"\s*:\s*"([^"]+)"/);
+          if (fileMatch) {
+            videoUrl = fileMatch[1].replace(/\\\//g, '/');
+            console.log(`[VideoProxy] Got video URL from file pattern`);
+          }
+          
+          // Method 1b: Look for source= parameter in URL
+          if (!videoUrl) {
+            const sourceMatch = jwHtml.match(/source=([^&'"]+)/);
+            if (sourceMatch) {
+              videoUrl = decodeURIComponent(sourceMatch[1]);
+              console.log(`[VideoProxy] Got video URL from source pattern`);
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`[VideoProxy] JWPlayer fetch failed: ${e.message}`);
+      }
+    }
+    
+    // Method 2: Fetch from episode page if no jwplayer URL or it failed
+    if (!videoUrl && episodeSlug) {
+      console.log(`[VideoProxy] Trying episode-based fetch for: ${episodeSlug}`);
+      
+      try {
+        const episodeUrl = `https://hentaisea.com/episodes/${episodeSlug}/`;
+        
+        const epResponse = await fetch(episodeUrl, {
+          headers: {
+            'User-Agent': getRandomUserAgent(),
+            'Referer': 'https://hentaisea.com/',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          }
+        });
+        
+        if (epResponse.ok) {
+          const epHtml = await epResponse.text();
+          
+          // Find post ID for AJAX call
+          const postIdMatch = epHtml.match(/data-post=['"](\d+)['"]/);
+          const numeMatch = epHtml.match(/data-nume=['"](\d+)['"]/);
+          
+          if (postIdMatch && numeMatch) {
+            const formData = new URLSearchParams({
+              action: 'doo_player_ajax',
+              post: postIdMatch[1],
+              nume: numeMatch[1],
+              type: 'tv'
+            });
+            
+            const ajaxResponse = await fetch('https://hentaisea.com/wp-admin/admin-ajax.php', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': getRandomUserAgent(),
+                'Referer': episodeUrl,
+                'X-Requested-With': 'XMLHttpRequest'
+              },
+              body: formData.toString()
+            });
+            
+            if (ajaxResponse.ok) {
+              const ajaxText = await ajaxResponse.text();
+              
+              // Extract jwplayer URL from AJAX response
+              const iframeMatch = ajaxText.match(/src=['"]([^'"]+jwplayer[^'"]+)['"]/);
+              if (iframeMatch) {
+                let jwUrl = iframeMatch[1];
+                if (jwUrl.startsWith('//')) jwUrl = 'https:' + jwUrl;
+                
+                // Fetch the jwplayer page
+                const jwResp = await fetch(jwUrl, {
+                  headers: {
+                    'User-Agent': getRandomUserAgent(),
+                    'Referer': 'https://hentaisea.com/'
+                  }
+                });
+                
+                if (jwResp.ok) {
+                  const jwContent = await jwResp.text();
+                  const fileMatch = jwContent.match(/"file"\s*:\s*"([^"]+)"/);
+                  if (fileMatch) {
+                    videoUrl = fileMatch[1].replace(/\\\//g, '/');
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`[VideoProxy] Episode fetch failed: ${e.message}`);
+      }
+    }
+    
+    if (!videoUrl) {
+      return new Response('Could not find video URL', { 
+        status: 404, 
+        headers: CORS_HEADERS 
+      });
+    }
+    
+    console.log(`[VideoProxy] Streaming video...`);
+    
+    // Get Range header from original request for seeking support
+    const rangeHeader = request.headers.get('Range');
+    
+    // Fetch the video and stream it through
+    const videoResponse = await fetch(videoUrl, {
+      headers: {
+        'User-Agent': getRandomUserAgent(),
+        'Referer': 'https://hentaisea.com/',
+        'Accept': '*/*',
+        ...(rangeHeader ? { 'Range': rangeHeader } : {})
+      }
+    });
+    
+    if (!videoResponse.ok && videoResponse.status !== 206) {
+      return new Response(`Video fetch failed: ${videoResponse.status}`, {
+        status: videoResponse.status,
+        headers: CORS_HEADERS
+      });
+    }
+    
+    // Build response headers
+    const responseHeaders = new Headers(CORS_HEADERS);
+    responseHeaders.set('Content-Type', videoResponse.headers.get('Content-Type') || 'video/mp4');
+    responseHeaders.set('Accept-Ranges', 'bytes');
+    
+    if (videoResponse.headers.get('Content-Length')) {
+      responseHeaders.set('Content-Length', videoResponse.headers.get('Content-Length'));
+    }
+    if (videoResponse.headers.get('Content-Range')) {
+      responseHeaders.set('Content-Range', videoResponse.headers.get('Content-Range'));
+    }
+    
+    // Stream the video body
+    return new Response(videoResponse.body, {
+      status: videoResponse.status,
+      headers: responseHeaders
+    });
+    
+  } catch (error) {
+    console.error(`[VideoProxy] Error: ${error.message}`);
+    return new Response(`Video proxy error: ${error.message}`, {
+      status: 500,
+      headers: CORS_HEADERS
+    });
+  }
 }
 
 /**
