@@ -514,7 +514,7 @@ async function handleMeta(path) {
 }
 
 // ============================================================================
-// STREAM HANDLER - INLINE SCRAPERS
+// STREAM HANDLER - INLINE SCRAPERS (Multi-Provider Aggregation)
 // ============================================================================
 
 async function handleStream(path, workerOrigin = '') {
@@ -525,16 +525,81 @@ async function handleStream(path, workerOrigin = '') {
   
   const [, type, id] = match;
   
-  // Determine provider from ID prefix
-  if (id.startsWith('hmm-')) {
-    return await getHentaiMamaStreams(id);
-  } else if (id.startsWith('hse-')) {
-    return await getHentaiSeaStreams(id, workerOrigin);
-  } else if (id.startsWith('htv-')) {
-    return await getHentaiTVStreams(id);
+  // Extract series ID and episode info from episode ID
+  // Format: {provider}-{series-slug}-episode-{num}
+  const episodeMatch = id.match(/^([a-z]+)-(.+)-episode-(\d+)$/);
+  if (!episodeMatch) {
+    return jsonResponse({ streams: [] });
   }
   
-  return jsonResponse({ streams: [] });
+  const [, primaryProvider, seriesSlug, episodeNum] = episodeMatch;
+  
+  // Load catalog to find series metadata with ALL providers
+  const catalogData = await fetchGitHub('catalog', GITHUB_URLS.catalog);
+  const series = Array.isArray(catalogData) ? catalogData : 
+                 (catalogData.catalog || catalogData.series || []);
+  
+  // Find the series by checking if any provider slug matches
+  const seriesItem = series.find(s => {
+    if (!s.providers || !s.providerSlugs) return false;
+    return s.providers.some(p => {
+      const slug = s.providerSlugs[p];
+      return slug === seriesSlug || s.id === `${primaryProvider}-${seriesSlug}`;
+    });
+  });
+  
+  // If no series found or no providers, fall back to single provider
+  if (!seriesItem || !seriesItem.providers || seriesItem.providers.length === 0) {
+    console.log(`[Stream] No multi-provider data found, using primary: ${primaryProvider}`);
+    if (primaryProvider === 'hmm') {
+      return await getHentaiMamaStreams(id);
+    } else if (primaryProvider === 'hse') {
+      return await getHentaiSeaStreams(id, workerOrigin);
+    } else if (primaryProvider === 'htv') {
+      return await getHentaiTVStreams(id);
+    }
+    return jsonResponse({ streams: [] });
+  }
+  
+  // Fetch streams from ALL available providers
+  console.log(`[Stream] Found ${seriesItem.providers.length} providers: ${seriesItem.providers.join(', ')}`);
+  
+  const allStreams = [];
+  
+  for (const provider of seriesItem.providers) {
+    const providerSlug = seriesItem.providerSlugs[provider];
+    if (!providerSlug) continue;
+    
+    const episodeId = `${provider}-${providerSlug}-episode-${episodeNum}`;
+    
+    try {
+      let providerStreams = [];
+      
+      if (provider === 'hmm') {
+        const response = await getHentaiMamaStreams(episodeId);
+        const data = await response.json();
+        providerStreams = data.streams || [];
+      } else if (provider === 'hse') {
+        const response = await getHentaiSeaStreams(episodeId, workerOrigin);
+        const data = await response.json();
+        providerStreams = data.streams || [];
+      } else if (provider === 'htv') {
+        const response = await getHentaiTVStreams(episodeId);
+        const data = await response.json();
+        providerStreams = data.streams || [];
+      }
+      
+      console.log(`[Stream] ${provider}: Found ${providerStreams.length} streams`);
+      allStreams.push(...providerStreams);
+      
+    } catch (err) {
+      console.log(`[Stream] ${provider} failed: ${err.message}`);
+    }
+  }
+  
+  console.log(`[Stream] Total streams from all providers: ${allStreams.length}`);
+  
+  return jsonResponse({ streams: allStreams });
 }
 
 // ============================================================================
