@@ -4228,17 +4228,17 @@
   "timePeriods": {
     "withCounts": [
       "This Week (0)",
-      "This Month (11)",
+      "This Month (10)",
       "3 Months (33)",
       "This Year (135)"
     ],
     "raw": {
       "This Week": 0,
-      "This Month": 11,
+      "This Month": 10,
       "3 Months": 33,
       "This Year": 135
     }
   },
-  "generatedAt": "2026-01-25T06:31:10.821Z",
+  "generatedAt": "2026-01-26T06:35:42.869Z",
   "catalogSize": 4257
 }
