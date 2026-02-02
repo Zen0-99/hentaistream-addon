@@ -4227,12 +4227,14 @@
   },
   "timePeriods": {
     "withCounts": [
+      "None",
       "This Week (0)",
       "This Month (0)",
       "3 Months (29)",
       "This Year (135)"
     ],
     "raw": {
+      "None": null,
       "This Week": 0,
       "This Month": 0,
       "3 Months": 29,

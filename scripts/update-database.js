@@ -1161,8 +1161,9 @@ function updateFilterOptions(catalog) {
       total: genres.length,
     },
     timePeriods: {
-      withCounts: Object.entries(timePeriodCounts).map(([period, count]) => `${period} (${count})`),
-      raw: timePeriodCounts,
+      // Add "None" option at the top so users can see all recent releases without a time filter
+      withCounts: ['None', ...Object.entries(timePeriodCounts).map(([period, count]) => `${period} (${count})`)],
+      raw: { None: null, ...timePeriodCounts },
     },
     generatedAt: new Date().toISOString(),
     catalogSize: catalog.length,

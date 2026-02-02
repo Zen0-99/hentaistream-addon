@@ -412,24 +412,28 @@ function filterByCatalog(series, catalogId, extra) {
       
     case 'hentai-monthly':
       if (genre) {
-        const now = Date.now();
-        const periods = {
-          'this week': 7 * 24 * 60 * 60 * 1000,
-          'this month': 30 * 24 * 60 * 60 * 1000,
-          '3 months': 90 * 24 * 60 * 60 * 1000,
-          'this year': 365 * 24 * 60 * 60 * 1000
-        };
         const periodKey = genre.toLowerCase().replace(/\s*\(\d+\)$/, '');
-        const periodMs = periods[periodKey] || periods['this month'];
         
-        filtered = filtered.filter(s => {
-          // Use lastUpdated (when episode was added), fall back to releaseInfo year
-          const dateStr = s.lastUpdated || s.releaseDate;
-          if (!dateStr) return false;
-          const itemDate = new Date(dateStr).getTime();
-          if (isNaN(itemDate)) return false;
-          return (now - itemDate) <= periodMs;
-        });
+        // "None" means return all with valid dates (no time filter)
+        if (periodKey !== 'none') {
+          const now = Date.now();
+          const periods = {
+            'this week': 7 * 24 * 60 * 60 * 1000,
+            'this month': 30 * 24 * 60 * 60 * 1000,
+            '3 months': 90 * 24 * 60 * 60 * 1000,
+            'this year': 365 * 24 * 60 * 60 * 1000
+          };
+          const periodMs = periods[periodKey] || periods['this month'];
+          
+          filtered = filtered.filter(s => {
+            // Use lastUpdated (when episode was added), fall back to releaseInfo year
+            const dateStr = s.lastUpdated || s.releaseDate;
+            if (!dateStr) return false;
+            const itemDate = new Date(dateStr).getTime();
+            if (isNaN(itemDate)) return false;
+            return (now - itemDate) <= periodMs;
+          });
+        }
       }
       filtered.sort((a, b) => {
         const dateA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;

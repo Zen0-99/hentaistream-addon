@@ -859,6 +859,14 @@ app.get('/manifest.json', async (req, res) => {
     // Trigger catalog pre-warming in background when manifest is served (addon install)
     prewarmCatalogsOnManifest();
     
+    // IMPORTANT: Prevent caching of manifest so time period counts stay fresh
+    // Without this, Stremio caches the manifest and shows stale "This Week" counts
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+    
     res.json(manifest);
   } catch (error) {
     logger.error('Manifest error:', error);
@@ -950,6 +958,13 @@ app.get('/:config/manifest.json', async (req, res) => {
     
     // Trigger catalog pre-warming in background when manifest is served (addon install)
     prewarmCatalogsOnManifest();
+    
+    // IMPORTANT: Prevent caching of manifest so time period counts stay fresh
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
     
     res.json(manifest);
   } catch (error) {

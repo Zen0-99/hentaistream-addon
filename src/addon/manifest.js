@@ -316,7 +316,8 @@ function getTimePeriodOptions() {
           if (itemDate >= oneYearAgo) counts['This Year']++;
         }
         
-        return Object.entries(counts).map(([period, count]) => `${period} (${count})`);
+        // Add "None" option at the top so users can see all recent releases without a time filter
+        return ['None', ...Object.entries(counts).map(([period, count]) => `${period} (${count})`)];
       }
     }
   } catch (err) {
@@ -326,11 +327,12 @@ function getTimePeriodOptions() {
   // Fall back to filter-options.json (used during startup before database loads)
   const options = loadFilterOptions();
   if (options?.timePeriods?.withCounts) {
-    return options.timePeriods.withCounts;
+    // Add "None" option at the top
+    return ['None', ...options.timePeriods.withCounts];
   }
   
   // Fallback to static list (without counts)
-  return ["This Week", "This Month", "3 Months", "This Year"];
+  return ["None", "This Week", "This Month", "3 Months", "This Year"];
 }
 
 /**

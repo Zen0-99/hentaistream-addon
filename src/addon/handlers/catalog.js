@@ -263,7 +263,7 @@ function parseCatalogId(id) {
  * Parse time period from genre filter value
  * Converts "This Week (45)" or "This Week" to a filter type
  * @param {string} timePeriod - Time period string from genre filter
- * @returns {string|null} Filter type: 'week', 'month', '3months', 'year', or null
+ * @returns {string|null} Filter type: 'week', 'month', '3months', 'year', 'none', or null
  */
 function parseTimePeriod(timePeriod) {
   if (!timePeriod) return null;
@@ -271,6 +271,8 @@ function parseTimePeriod(timePeriod) {
   // Remove count suffix like " (45)" and normalize
   const clean = timePeriod.replace(/\s*\(\d+\)$/, '').trim().toLowerCase();
   
+  // "None" means show all releases without time filtering
+  if (clean === 'none') return 'none';
   if (clean === 'this week') return 'week';
   if (clean === 'this month') return 'month';
   if (clean === '3 months') return '3months';
@@ -284,11 +286,17 @@ function parseTimePeriod(timePeriod) {
  * STRICT DATE FILTERING: Only items with actual lastUpdated dates are included
  * Items without dates are EXCLUDED from New Releases to ensure accuracy
  * @param {Array} series - Array of series objects
- * @param {string} filterType - 'week', 'month', '3months', 'year', 'weekly', 'monthly', or null
+ * @param {string} filterType - 'week', 'month', '3months', 'year', 'weekly', 'monthly', 'none', or null
  * @returns {Array} Filtered series
  */
 function applyTimeFilter(series, filterType) {
   if (!filterType) return series;
+  
+  // "None" filter type means return all series with lastUpdated, sorted by date
+  // This lets users see all recent releases without a specific time window
+  if (filterType === 'none') {
+    return series.filter(item => item.lastUpdated && !isNaN(new Date(item.lastUpdated).getTime()));
+  }
   
   const now = new Date();
   const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);

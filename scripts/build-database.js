@@ -536,8 +536,9 @@ function generateFilterOptions(catalog, outputDir) {
     return `${displayName} (${count})`;
   });
   const genreOptions = genres.map(([genre, count]) => `${genre} (${count})`);
-  const timePeriodOptions = Object.entries(timePeriodCounts)
-    .map(([period, count]) => `${period} (${count})`);
+  // Add "None" option at the top so users can see all recent releases without a time filter
+  const timePeriodOptions = ['None', ...Object.entries(timePeriodCounts)
+    .map(([period, count]) => `${period} (${count})`)];
   
   // Clean versions (without counts, for filtering)
   const cleanYearOptions = years.map(([year]) => String(year));
@@ -564,7 +565,7 @@ function generateFilterOptions(catalog, outputDir) {
     },
     timePeriods: {
       withCounts: timePeriodOptions,
-      raw: timePeriodCounts,
+      raw: { None: null, ...timePeriodCounts },
     },
     episodeDates: {
       total: episodesTotal,

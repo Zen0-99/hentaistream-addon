@@ -321,20 +321,24 @@ function filterByCatalog(series, catalogId, extra) {
     case 'hentai-monthly':
       // Filter by time period
       if (genre) {
-        const now = Date.now();
-        const periods = {
-          'this week': 7 * 24 * 60 * 60 * 1000,
-          'this month': 30 * 24 * 60 * 60 * 1000,
-          '3 months': 90 * 24 * 60 * 60 * 1000,
-          'this year': 365 * 24 * 60 * 60 * 1000
-        };
         const periodKey = genre.toLowerCase().replace(/\s*\(\d+\)$/, '');
-        const periodMs = periods[periodKey] || periods['this month'];
         
-        filtered = filtered.filter(s => {
-          const releaseDate = s.releaseDate ? new Date(s.releaseDate).getTime() : 0;
-          return (now - releaseDate) <= periodMs;
-        });
+        // "None" means return all with valid dates (no time filter)
+        if (periodKey !== 'none') {
+          const now = Date.now();
+          const periods = {
+            'this week': 7 * 24 * 60 * 60 * 1000,
+            'this month': 30 * 24 * 60 * 60 * 1000,
+            '3 months': 90 * 24 * 60 * 60 * 1000,
+            'this year': 365 * 24 * 60 * 60 * 1000
+          };
+          const periodMs = periods[periodKey] || periods['this month'];
+          
+          filtered = filtered.filter(s => {
+            const releaseDate = s.releaseDate ? new Date(s.releaseDate).getTime() : 0;
+            return (now - releaseDate) <= periodMs;
+          });
+        }
       }
       // Sort by release date (newest first)
       filtered.sort((a, b) => {
