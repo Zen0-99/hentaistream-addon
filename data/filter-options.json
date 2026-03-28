@@ -4234,16 +4234,16 @@
       "This Week (0)",
       "This Month (3)",
       "3 Months (16)",
-      "This Year (123)"
+      "This Year (122)"
     ],
     "raw": {
       "None": null,
       "This Week": 0,
       "This Month": 3,
       "3 Months": 16,
-      "This Year": 123
+      "This Year": 122
     }
   },
-  "generatedAt": "2026-03-27T07:05:40.877Z",
+  "generatedAt": "2026-03-28T06:57:42.631Z",
   "catalogSize": 4268
 }
