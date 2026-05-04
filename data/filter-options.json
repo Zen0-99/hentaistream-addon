@@ -4232,18 +4232,18 @@
     "withCounts": [
       "None",
       "This Week (5)",
-      "This Month (6)",
+      "This Month (5)",
       "3 Months (14)",
       "This Year (115)"
     ],
     "raw": {
       "None": null,
       "This Week": 5,
-      "This Month": 6,
+      "This Month": 5,
       "3 Months": 14,
       "This Year": 115
     }
   },
-  "generatedAt": "2026-05-03T07:59:44.897Z",
+  "generatedAt": "2026-05-04T08:28:08.846Z",
   "catalogSize": 4277
 }
