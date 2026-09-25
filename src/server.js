@@ -72,7 +72,6 @@ async function prewarmCatalogsOnManifest() {
   try {
     // Import scrapers
     const hentaimamaScraper = require('./scrapers/hentaimama');
-    const hentaiseaScraper = require('./scrapers/hentaisea');
     const hentaitvScraper = require('./scrapers/hentaitv');
     
     const DELAY_MS = 100;
@@ -86,11 +85,6 @@ async function prewarmCatalogsOnManifest() {
           cache.key('catalog', `hmm-popular-page-${page}`),
           cache.getTTL('catalog'),
           () => hentaimamaScraper.getCatalog(page, null, 'popular')
-        ),
-        cache.prewarm(
-          cache.key('catalog', `hse-popular-page-${page}`),
-          cache.getTTL('catalog'),
-          () => hentaiseaScraper.getTrending(page)
         ),
         cache.prewarm(
           cache.key('catalog', `htv-popular-page-${page}`),
@@ -115,11 +109,6 @@ async function prewarmCatalogsOnManifest() {
           cache.key('catalog', `hmm-recent-page-${page}`),
           cache.getTTL('catalog'),
           () => hentaimamaScraper.getCatalog(page, null, 'recent')
-        ),
-        cache.prewarm(
-          cache.key('catalog', `hse-recent-page-${page}`),
-          cache.getTTL('catalog'),
-          () => hentaiseaScraper.getCatalog(page, null, 'recent')
         ),
         cache.prewarm(
           cache.key('catalog', `htv-recent-page-${page}`),
@@ -558,7 +547,6 @@ app.get('/api/options', (req, res) => {
     studios: STUDIO_OPTIONS,
     providers: [
       { id: 'hmm', name: 'HentaiMama' },
-      { id: 'hse', name: 'HentaiSea' },
       { id: 'htv', name: 'HentaiTV' }
     ]
   });
@@ -1187,7 +1175,6 @@ const server = app.listen(config.server.port, async () => {
     
     try {
       const hentaimamaScraper = require('./scrapers/hentaimama');
-      const hentaiseaScraper = require('./scrapers/hentaisea');
       const hentaitvScraper = require('./scrapers/hentaitv');
       
       const warmupPromises = [
@@ -1195,11 +1182,6 @@ const server = app.listen(config.server.port, async () => {
           cache.key('catalog', 'hmm-page-1'),
           cache.getTTL('catalog'),
           () => hentaimamaScraper.getCatalog(1, null, 'popular')
-        ),
-        cache.prewarm(
-          cache.key('catalog', 'hse-page-1'),
-          cache.getTTL('catalog'),
-          () => hentaiseaScraper.getTrending(1)
         ),
         cache.prewarm(
           cache.key('catalog', 'htv-page-1'),
